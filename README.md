@@ -3,15 +3,18 @@
 전역 Claude Code 스킬 모음. 이 디렉토리는 `~/.claude/skills/` 이며, 여기 있는 스킬은 이 머신의
 **모든 프로젝트에서** 별도 설치 없이 사용된다.
 
+원격: <https://github.com/drsmin/skmskills>
+
 ## 복구 (새 환경/pod)
 
 이 저장소를 `~/.claude/skills` 로 clone 하면 바로 인식된다.
 
 ```bash
-git clone <remote-url> ~/.claude/skills
+git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
 ```
 
-이미 디렉토리가 있으면 그 안에서 `git pull` 한다. (git 자격증명·토큰 값은 이 저장소에 남기지 않는다.)
+이미 디렉토리가 있으면 그 안에서 `git pull` 한다. (GitHub HTTPS push 는 토큰 인증이 필요하며,
+자격증명·토큰 값은 이 저장소에 남기지 않는다.)
 
 ## 수록 스킬
 
