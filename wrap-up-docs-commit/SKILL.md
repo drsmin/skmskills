@@ -52,7 +52,9 @@ git diff --stat
 ## 3. Commit
 
 Stage and commit with a heredoc for the multi-line message. Use the project's default branch (detect
-with `git branch --show-current`). End the message with the Co-Authored-By trailer:
+with `git branch --show-current`). End the message with the Co-Authored-By trailer for **whichever
+model is currently running** — take the exact name from the harness's commit-trailer instruction, and
+never copy a model name hardcoded here or in a previous commit:
 
 ```
 git add -A
@@ -61,7 +63,7 @@ git commit -F - <<'EOF'
 
 <body: what changed and why, key files, verification result>
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+Co-Authored-By: <현재 실행 중인 모델명 / current model name> <noreply@anthropic.com>
 EOF
 ```
 
