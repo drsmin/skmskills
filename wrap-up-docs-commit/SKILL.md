@@ -70,6 +70,20 @@ EOF
 Keep the subject concise; the body should let a future session understand the change without the
 diff. If the work spans a decision, reference the `D-NNN`.
 
+### A mixed trailer history is correct — never "fix" it
+
+When the model changes mid-project, older commits keep the older trailer. **Never rewrite the trailer
+in past commits**: a commit records who wrote it at that time, and that mix is exactly how you date
+the switch later:
+
+```
+git log --format="%h %ad %b" --date=short | grep -B2 "Co-Authored-By" | head
+```
+
+If a project wants that boundary written down (so nobody mistakes it for a defect and "fixes" it),
+record it in **that project's** `CLAUDE.md` commit rules — with the actual commit hashes. It does not
+belong here: this file stays model-neutral, which is why the trailer above is a placeholder.
+
 ## 4. Push (immediately, same flow)
 
 Use the existing remote. If the remote is HTTPS, no interactive flags are needed. Push to the branch
