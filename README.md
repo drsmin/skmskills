@@ -27,10 +27,20 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   하나)를 심고, **화면·메뉴·권한을 바꾸고 문서를 안 고치면 테스트가 깨지게** 만든다. 문서-화면 대응은
   각 문서 머리의 선언 한 줄이 계약이고, 검사는 **구조만**(문구는 사람이 본다). 라우터·테스트 러너·
   권한 체계 유무에 맞춰 검사를 켜고 끈다.
+- **new-webapp-project** — 웹 콘텐츠가 메인인 하이브리드 앱 골격(base)을 복사해 **새 앱
+  프로젝트를 세운다.** clone → origin 교체 → SSOT(`project.config.ts`) → 스코프 → `apps/web` →
+  게이트 → prebuild → 물려받은 문서 정리. 절반만 된 fork 에서 **이어서 하기**도 된다.
+  ⭐ 단계를 스킬에 복사하지 않고 **base 의 `docs/start-new-project.md` 를 읽어서 따른다** —
+  base 가 개선될 때 스킬이 조용히 낡는 것을 막는다.
+  기본 base: `github.com/drsmin/drs-webapp-base` (다른 base 를 줘도 된다)
 
-세 스킬 모두 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤 프로젝트에서도 쓸 수 있다.
+**앞의 세 스킬**은 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤 프로젝트에서도 쓸 수 있다.
 `bootstrap-docs-workflow`(기록 규율) → `bootstrap-screen-manual`(사용 설명서) →
 `wrap-up-docs-commit`(마무리) 순으로 물린다.
+
+**`new-webapp-project` 는 성격이 다르다** — 특정 골격(base)을 전제하는 **부트스트랩 스킬**이다.
+base 주소는 인자로 바꿀 수 있고, 위 세 방법론 스킬과 함께 쓴다(그 base 자체가 이미
+`bootstrap-docs-workflow` 의 문서 구조를 갖고 있다).
 
 ## 새 스킬 추가
 
