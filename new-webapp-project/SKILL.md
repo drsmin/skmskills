@@ -1,6 +1,6 @@
 ---
 name: new-webapp-project
-description: Start a new hybrid app project from a web-first native shell base (drs-webapp-base) — clone the base, set the new remote, fill the SSOT (project.config.ts), rename the scope, scaffold apps/web, run the gates, prebuild, and clean up inherited docs. Use when the user asks to "start a new project", "새 프로젝트 시작", "앱 프로젝트 만들어줘", "base 로 fork 해서 시작", "hybrid 앱 새로 시작", or names the base repo. Also resumes a half-finished fork (it reads fork:check to find what is left). Drives the base's own docs/start-new-project.md rather than restating it, so it never drifts from the base.
+description: Start a new hybrid app project from a web-first native shell base (drs-webapp-base) — clone the base, set the new remote, fill the SSOT (project.config.ts), rename the scope, scaffold apps/web, run the gates, prebuild, and clean up inherited docs. Use when the user asks to "start a new project", "새 프로젝트 시작", "앱 프로젝트 만들어줘", "base 로 fork 해서 시작", "hybrid 앱 새로 시작", or names the base repo. Accepts an existing product blueprint/plan and prefills the interview from it (asks for it first), then seeds current-task/todo from it. Also resumes a half-finished fork (it reads fork:check to find what is left). Drives the base's own docs/start-new-project.md rather than restating it, so it never drifts from the base.
 ---
 
 # Start a new project from the webapp base
@@ -23,6 +23,34 @@ description: Start a new hybrid app project from a web-first native shell base (
 3. 새로 시작이라면 **작업 디렉토리가 비어 있거나 새 디렉토리**여야 한다.
 
 ## 1. 사용자에게 먼저 물어볼 것
+
+### ⭐ 0번 질문: **제품 블루프린트가 이미 있는가?**
+
+아래 표의 값 대부분은 **블루프린트의 산출물**이다 — 특히 기능 토글은 "이 앱이 실제로 뭘 하나"를
+정하지 않으면 답할 수 없다. 그래서 **가장 먼저** 물어본다: 기획/설계 문서가 이미 있는가?
+(대화 안에 있어도 되고, 파일·URL·다른 디렉토리여도 된다.)
+
+**있으면 — 그것부터 읽고 나서 인터뷰한다.**
+
+1. 블루프린트를 읽어 아래 표를 **채울 수 있는 만큼 채운다.**
+2. 사용자에게는 **채운 값을 보여주고 확인**받는다. "블루프린트에서 이렇게 읽었다"고 밝힌다 —
+   ⚠️ 문서에 안 적힌 값을 **추론해서 채우지 마라.** 특히 번들 ID·웹 URL 은 문서에 없으면
+   **없는 것이다.** 물어본다.
+3. 나머지(문서에 없는 것)만 추가로 묻는다.
+
+**없으면** — 지금 쓰겠는지 물어본다. 먼저 써도 되고(권장), 저장소부터 세우고 그 안에서 써도 된다.
+후자도 안전하다: `fork:check` 가 안 채운 값을 계속 알려주므로 미완성 상태로 두는 것이 위험하지
+않다. 다만 **기능 토글을 나중에 정하면 prebuild 를 한 번 더 돌리게 된다**고 알려준다.
+
+⚠️ **기능 토글은 "일단 다 켜두자"가 가장 비싼 선택이다** — 켜면 권한이 따라 붙고, 안 쓰는
+권한은 스토어 심사 문제가 된다.
+
+**블루프린트를 저장소 어디에 두는지·`current-task`/`todo` 를 어떻게 시딩하는지는
+`docs/start-new-project.md`(매뉴얼) 가 갖는다.** 여기 다시 적지 않는다 — clone 뒤 그 문서를 따른다.
+⚠️ 이름만 미리 주의: base 에 이미 **`docs/blueprint.md`(기술 선정 근거)** 가 있고 **fork 도
+남기는 문서**다. 제품 블루프린트는 **다른 이름**이어야 한다(매뉴얼이 자리를 정해 준다).
+
+### 그다음 — 값 인터뷰
 
 **값을 절대 추측해서 채우지 마라.** 이 골격의 플레이스홀더는 *일부러 틀린 값*이고, 그럴듯한
 기본값을 넣는 순간 그게 스토어까지 나간다 — 검사기가 못 잡는 유일한 실패 방식이다.
@@ -100,6 +128,7 @@ git remote set-url origin https://github.com/<owner>/<repo>.git
 - 통과한 게이트 목록, 실패한 것이 있으면 그대로
 - `prebuild` 를 돌렸는가 / 실제로 앱을 띄워 봤는가
 - **남은 일** — 특히 사람이 해야 하는 것(에셋·EAS·비밀값·실기기)과 아직 안 채운 SSOT 값
+- 블루프린트를 받았다면 **어디에 넣었고** `current-task`·`todo` 를 거기서 채웠는지
 - 첫 커밋을 할지 사용자에게 확인한다 (이 골격의 규칙: **커밋·push 는 사용자가 요청할 때**)
 
 ## 왜 이 스킬이 단계를 다시 적지 않는가
