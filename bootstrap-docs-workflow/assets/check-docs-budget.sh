@@ -50,6 +50,18 @@ _count() {
   echo "$n"
 }
 
+# 특정 섹션 안에서만 센다. 파일 전체를 세면 오탐이 난다 — current-task.md 의 "현재 목표" 절에
+# 불릿을 쓰면 그게 진입점으로 잡힌다(실제로 발생했다). 헤딩 제목으로 구간을 잡고 다음 헤딩에서 끊는다.
+# 인자: <파일> <헤딩에 포함된 문자열> <셀 줄의 정규식>
+_count_in_section() {
+  [ -f "$1" ] || { echo -1; return; }
+  awk -v want="$2" -v pat="$3" '
+    /^#+ /   { inside = (index($0, want) > 0); next }
+    inside && $0 ~ pat { c++ }
+    END      { print c+0 }
+  ' "$1"
+}
+
 # check <표시명> <실제값> <soft> <hard> <단위> <초과 시 안내>
 check() {
   local label=$1 n=$2 soft=$3 hard=$4 unit=$5 action=$6
@@ -79,7 +91,8 @@ check "CLAUDE.md" "$(_lines CLAUDE.md)" "$CLAUDE_SOFT" "$CLAUDE_HARD" "줄" \
 # ── current-task.md — 매 세션 전문을 읽는다 ─────────────────────────────────
 check "docs/current-task.md" "$(_lines docs/current-task.md)" "$CURTASK_SOFT" "$CURTASK_HARD" "줄" \
   "진입점 목록을 잘라낸다 (session-log 에 중복 존재하므로 삭제 가능)"
-check "  └ 진입점 개수" "$(_count docs/current-task.md '^- ')" "$ENTRY_SOFT" "$ENTRY_HARD" "개" \
+check "  └ 진입점 개수" \
+  "$(_count_in_section docs/current-task.md '진입점' '^- ')" "$ENTRY_SOFT" "$ENTRY_HARD" "개" \
   "오래된 진입점 삭제 (아카이브 불필요 — session-log 에 있음)"
 
 # ── session-log.md — 최근 N개만 읽지만 회전 트리거 ──────────────────────────
