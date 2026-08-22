@@ -231,13 +231,46 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 ## 2. CLAUDE.md 는 특별 취급한다
 
 `CLAUDE.md` 는 **매 세션 자동으로 컨텍스트에 들어간다.** 읽기 프로토콜로 방어할 수 없는
-유일한 파일이므로 가장 엄격하다.
+유일한 파일이므로 가장 엄격하고, 크기 외에 **구조**까지 검사한다.
 
-- **하드 캡 80줄.** 초과 시 커밋이 막힌다.
 - **허브이지 문서가 아니다.** 규칙의 *위치*만 가리킨다. 근거·이력·예시·코드는 넣지 않는다.
 - **순증 금지.** 새 규칙은 기존 줄을 교체하거나 `docs/` 로 밀어내고 한 줄로 가리킨다.
   "일단 여기 적어두자"가 이 파일을 망친다.
 - 프로젝트가 커져도 CLAUDE.md 는 커지지 않는다. 늘어나는 건 위치 인덱스의 행 수뿐이다.
+
+### 상한 계약 — 문서가 자기 상한을 선언한다
+
+문서 안에 계약 줄을 두고 가드가 그 줄을 파싱해 자기 상수와 대조한다.
+
+```
+> **상한 계약(가드가 이 줄을 파싱한다):** 전체 `4000자` · 전체 `80줄` · 한 줄 `240자` · 섹션 `25줄`
+```
+
+**상한을 늘리려면 문서와 스크립트를 둘 다 고쳐야 한다.** 한 곳만 고치면 가드가 불일치로 막는다.
+"일단 늘리고 보자"가 안 되고, 상한 변경이 의식적인 행위가 된다.
+
+### 줄 수만으로는 부족하다
+
+가장 흔한 비대화 경로는 줄이 늘어나는 게 아니라 **한 줄이 비대해지는 것**이다. 표 행 하나에
+요약을 밀어넣으면 줄 수는 그대로인데 컨텍스트는 통째로 먹힌다. 그래서 4종을 함께 본다:
+전체 문자 수 · 전체 줄 수 · **한 줄 길이** · **섹션 본문 줄 수**.
+
+### 섹션 스프롤을 막는다
+
+허용 `##` 섹션 목록을 `scripts/claude-md-sections.txt` 에 둔다. 섹션을 새로 만들려면 문서와 이
+파일을 둘 다 고쳐야 하므로, 섹션을 늘리기 전에 "그 내용이 `docs/` 로 가야 하는 게 아닌가"를 먼저
+따지게 된다. 섹션 추가는 비대화의 1차 경로다.
+
+### 허브가 거짓말하지 않게 한다
+
+- **백틱 경로 존재 검사** — 파일을 옮기거나 지우고 문서를 안 고치면 허브가 조용히 거짓말한다.
+  위치 인덱스가 틀린 허브는 없는 것보다 나쁘다(다음 세션이 그걸 믿고 헤맨다).
+- **`D-번호` 해결 검사** — 참조한 결정이 `docs/decisions.md` 에 실제로 정의돼 있는지.
+
+### 검사하지 않는 것
+
+문장 표현·규칙 순서·규칙 내용의 *정확성* 은 일부러 검사하지 않는다 — 그건 사람이 본다.
+문구를 다듬을 때마다 빨개지는 가드는 결국 팀이 무르게 만든다. **구조만 본다.**
 
 ## 3. 캡 (2차 방어선)
 
@@ -328,14 +361,24 @@ Two things in this template are load-bearing and easy to water down — don't:
 2. **The self-cap warning at the top.** This file is auto-loaded every session, so it's the one file
    a read protocol can't protect. The cap only holds if the rule lives in the file itself.
 
+The **contract line** is load-bearing too: the doc declares its own limits and the guard parses that
+line and compares it against its own constants. Raising a limit then requires editing *both* the doc
+and the script — which turns "just bump it" into a deliberate act. Keep the backtick format exactly
+(`전체 \`4000자\`` etc.) or the guard reports the declaration as missing.
+
 ```markdown
 # CLAUDE.md
 
 <project> — 규칙 허브. **규칙 원본은 각 문서에 있고 여기서는 위치만 가리킨다.**
 
-> ⚠️ 이 파일은 매 세션 자동으로 컨텍스트에 들어간다. **80줄을 넘기지 않는다.**
-> 새 규칙은 줄을 *추가*하지 말고 기존 줄을 교체하거나 `docs/` 로 밀어낸다.
-> 변경 이력·근거·예시는 여기 두지 않는다. 예산 정책 전문: `docs/context-budget.md`
+> ⚠️ 이 파일은 매 세션 자동으로 컨텍스트에 들어간다. 새 규칙은 줄을 *추가*하지 말고 기존 줄을
+> 교체하거나 `docs/` 로 밀어낸다. 변경 이력·근거·예시는 여기 두지 않는다.
+>
+> **상한 계약(가드가 이 줄을 파싱한다):** 전체 `4000자` · 전체 `80줄` · 한 줄 `240자` · 섹션 `25줄`
+>
+> 상한·허용 섹션·백틱 경로 존재·`D-번호` 해결은 `scripts/check-docs-budget.sh` 가 검사한다
+> (pre-commit). 위반 시 **상한을 늘리지 말고** 내용을 `docs/` 로 옮긴다 — 상한을 고치려면 이 줄과
+> 스크립트를 **둘 다** 고쳐야 한다. 예산 정책 전문: `docs/context-budget.md`
 
 ## 세션 시작 시 — 읽는 양을 고정한다 (이력이 길어져도 늘지 않는다)
 1. `docs/current-task.md` — 전문
@@ -386,31 +429,62 @@ is given to you at invocation time:
 
 ```bash
 mkdir -p scripts
-cp "<skill base dir>/assets/check-docs-budget.sh" scripts/
-cp "<skill base dir>/assets/install-hooks.sh"     scripts/
+cp "<skill base dir>/assets/check-docs-budget.sh"   scripts/
+cp "<skill base dir>/assets/install-hooks.sh"       scripts/
+cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
 chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
 ```
 
-- `check-docs-budget.sh` — checks the §3-of-`context-budget.md` caps. soft = warn (exit 0),
-  hard = block (exit 1). Every violation prints the specific rotation action to take. Caps live in
-  variables at the top of the file; tune them to project scale, but keep the `CLAUDE.md` cap tight.
-  It auto-detects reference docs (any `docs/*.md` outside the core set) and reports them **uncapped**,
-  since the read protocol already excludes them.
+- `check-docs-budget.sh` — two parts. **§A** caps file sizes/counts per `context-budget.md` §3.
+  **§B** inspects `CLAUDE.md` structurally, because that file is auto-loaded and no read protocol
+  can protect it. soft = warn (exit 0), hard = block (exit 1); every violation prints the specific
+  action. Caps live in variables at the top; tune to project scale but keep the hub tight.
+  Reference docs (any `docs/*.md` outside the core set) are auto-detected and reported **uncapped**.
+- `claude-md-sections.txt` — the allowed `##` sections of `CLAUDE.md`, one heading per line.
+  **Section sprawl is the main route to hub bloat**, so adding a section must touch the doc *and*
+  this file. Edit it to match whatever headings you actually installed. Entries start with `## `;
+  comments start with `# ` (one hash) — the two must not overlap, or the list parses empty.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
   relay that to the user rather than forcing it.
 
-Then **verify the guard actually fires** — a check that only ever passes is worse than none, because
-it looks like coverage. Confirm at minimum that a hard violation blocks:
+### §B checks, and why each exists
+
+| 검사 | 막는 실패 |
+| --- | --- |
+| 문자 수 | 줄 수만 보면 **긴 표 행 하나가 예산을 삼키는 것**을 놓친다 |
+| 한 줄 길이 | 위와 같은 원인. 한 행에 요약을 밀어넣는 게 실제 비대화 경로였다 |
+| 섹션 본문 줄 수 | 섹션 하나가 문서를 삼키는 것 |
+| 허용 섹션 목록 | **섹션 스프롤** — 비대화의 1차 경로 |
+| 백틱 경로 존재 | 파일을 옮기고 문서를 안 고치면 **허브가 조용히 거짓말한다** |
+| `D-번호` 해결 | 없는 결정을 가리키는 참조 |
+| 계약 줄 ↔ 상수 | 상한을 **문서만 고쳐** 몰래 올리는 것 |
+| 스캔 sanity | 목록·정규식이 0건을 반환해 **검사가 통과처럼 보이며 무의미해지는 것** |
+
+The last one matters most: a guard that silently scans nothing passes forever and reads as coverage.
+Structure only — sentence wording, rule order, and whether a rule is *correct* are deliberately not
+checked. A guard that reddens on every copy edit gets weakened by the team.
+
+### Then verify the guard actually fires
+
+Non-negotiable. Inject a violation per check and confirm each blocks:
 
 ```bash
-cp CLAUDE.md /tmp/c.bak
-for i in $(seq 1 60); do echo "- filler $i" >> CLAUDE.md; done
-bash scripts/check-docs-budget.sh; echo "expect exit 1, got $?"
-cp /tmp/c.bak CLAUDE.md
-bash scripts/check-docs-budget.sh   # back to green
+cp CLAUDE.md /tmp/hub.bak
+printf '\n## 몰래 추가한 섹션\n- x\n' >> CLAUDE.md        # 허용 목록 밖 섹션
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
+cp /tmp/hub.bak CLAUDE.md
+
+sed -i 's/전체 `4000자`/전체 `99999자`/' CLAUDE.md        # 문서만 상한 올리기
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
+cp /tmp/hub.bak CLAUDE.md
+bash scripts/check-docs-budget.sh                          # back to green
 ```
+
+Also worth injecting: a 300-char line, a `docs/` path that doesn't exist, a `D-999` reference, and a
+`claude-md-sections.txt` whose entries are all commented out (that last one must fail as
+"파싱 0건", not pass silently).
 
 If `docs/decisions.md` has no index table, the script hard-fails by design — that table is what the
 session-start protocol reads, so its absence breaks the whole scheme.
