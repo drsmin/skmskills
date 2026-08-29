@@ -22,8 +22,18 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   `docs/`(current-task·session-log·decisions(D-번호)·todo·recovery·context-budget) + `CLAUDE.md`
   규칙 허브 + **컨텍스트 예산 안전장치**를 스캐폴딩. 프로젝트당 1회. 기존 파일은 덮지 않음(멱등).
   안전장치는 기록 파일이 매 세션 시작 비용을 불리는 것을 막는다 — 핵심은 캡이 아니라 **읽는 양의
-  고정**(CLAUDE.md 가 "session-log 최근 3개 / decisions 인덱스만" 처럼 범위를 지정)이고,
-  `assets/check-docs-budget.sh` + pre-commit 훅이 2차 방어선이다.
+  고정**이고, `assets/check-docs-budget.sh` + pre-commit 훅이 2차 방어선이다.
+  ⭐ **읽는 양은 산문이 아니라 `assets/session-brief.sh` 가 자른다.** 예전 판은 CLAUDE.md 에
+  "session-log 최근 3개 / decisions 인덱스만" 이라고 *적기만* 했는데, 자를 줄 번호가 없으니
+  결국 파일 전체가 읽혔다 — 어느 저장소 실측에서 규칙대로 11,754자 vs 실제 49,654자(**4.2배**),
+  그것도 **모든 캡이 초록인 상태**로. 그래서 브리핑 스크립트가 범위를 잘라 출력하고, 가드는
+  파일 크기 외에 **브리핑 출력 크기**와 **단위**(로그 항목당·결정당 본문)를 함께 잰다.
+
+- **context-budget-audit** — 위의 반대쪽. **이미 깔린** 문서 규율이 실제로 O(1) 인지 재고
+  개보수한다. "가이드/규칙에서 토큰이 어디서 낭비되나" 류의 질문에 쓴다. 추정 대신 재는 명령,
+  증상→고침 체크표(산문뿐인 읽기 범위 · 총합만 재는 가드 · 이중 읽기 · 회전 규칙 없는 디렉터리 ·
+  영원히 안 걸리는 회전 조건 · 자기 상태를 서술하는 문서), 그리고 스크립트는 인라인 대신
+  `bootstrap-docs-workflow/assets/` 에서 복사하게 한다.
 - **wrap-up-docs-commit** — 작업 한 단위를 마무리한다. 문서 갱신(session-log·decisions·todo·
   current-task) → 민감정보 스캔 → 커밋(Co-Authored-By) → 즉시 push. bootstrap 의 동반 스킬.
   기록 길이 캡·인덱스 표 갱신·훅 차단 시 회전(우회 금지)·리포 외부 변경 보고까지 안내하므로
@@ -39,9 +49,10 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   base 가 개선될 때 스킬이 조용히 낡는 것을 막는다.
   기본 base: `github.com/drsmin/drs-webapp-base` (다른 base 를 줘도 된다)
 
-**앞의 세 스킬**은 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤 프로젝트에서도 쓸 수 있다.
-`bootstrap-docs-workflow`(기록 규율) → `bootstrap-screen-manual`(사용 설명서) →
-`wrap-up-docs-commit`(마무리) 순으로 물린다.
+**`new-webapp-project` 를 뺀 나머지**는 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤
+프로젝트에서도 쓸 수 있다. `bootstrap-docs-workflow`(기록 규율) → `bootstrap-screen-manual`
+(사용 설명서) → `wrap-up-docs-commit`(마무리) 순으로 물리고, `context-budget-audit` 은
+기존 설치를 점검할 때 아무 때나 끼어든다.
 
 **`new-webapp-project` 는 성격이 다르다** — 특정 골격(base)을 전제하는 **부트스트랩 스킬**이다.
 base 주소는 인자로 바꿀 수 있고, 위 세 방법론 스킬과 함께 쓴다(그 base 자체가 이미

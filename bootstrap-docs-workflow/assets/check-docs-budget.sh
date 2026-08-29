@@ -12,17 +12,31 @@
 #
 # 사용: bash scripts/check-docs-budget.sh
 # 종료코드: 0 = 통과(soft 경고 포함), 1 = hard 초과
+#
+# 이식성: **bash 3.2 에서도 돌아야 한다** (macOS 기본 /bin/bash). `mapfile`/`readarray` 와
+#   `declare -A` 는 bash 4 전용이라 쓰지 않는다. 한 번 썼다가 §B-5·B-6·B-8 세 검사가
+#   `set -u` 와 겹쳐 통째로 건너뛰어졌고, 그런데도 종료코드는 0 이었다 — 통과처럼 보이는 실패.
+#   배열 대신 개행 구분 문자열 + `while IFS= read` 를 쓴다.
 set -uo pipefail
 
 # ── 캡 (프로젝트 규모에 맞게 조정 가능. 단 CLAUDE.md 는 낮게 유지할 것) ─────────
 CLAUDE_SOFT=60;   CLAUDE_HARD=80     # 매 세션 자동 로드 — 가장 엄격
 CURTASK_SOFT=40;  CURTASK_HARD=60    # 매 세션 전문을 읽음
-ENTRY_SOFT=5;     ENTRY_HARD=7       # current-task 진입점 개수
+ENTRY_SOFT=1;     ENTRY_HARD=3       # current-task 진입점 개수 — session-log 최근 N개와 중복이다
 SESSLOG_SOFT=300; SESSLOG_HARD=500
-SESSENT_SOFT=12;  SESSENT_HARD=20    # session-log 항목 개수
+SESSENT_SOFT=12;  SESSENT_HARD=20    # session-log 항목 개수 (회전 트리거 — 세션 비용 아님)
+# 세션 시작 비용은 총 줄 수가 아니라 **최근 항목 하나의 길이**다. 총 줄 수·항목 개수는 회전
+# 트리거일 뿐 브리핑 크기와 무관하다 — 긴 항목 하나가 브리핑을 삼킨다. "총합이 아니라 단위를 재라".
+SESSBODY_SOFT=15; SESSBODY_HARD=22   # CLAUDE.md 의 "항목당 15줄 이내" 를 항목별로 강제
 TODO_SOFT=120;    TODO_HARD=200
-DEC_SOFT=400;     DEC_HARD=700       # 회전하지 않고 압축한다
+# decisions.md 는 총 줄 수로 재지 않는다. 결정은 계속 늘고, 세션 시작에 읽는 건
+# 인덱스 표뿐이라(§1) 총합은 애초에 세션 비용이 아니다. 대신 **결정 하나의 본문 길이**를 잰다.
+DECBODY_SOFT=20;  DECBODY_HARD=30    # §5 의 "본문 20줄 이내" 를 결정별로 강제
+DEC_OVERHEAD=4                       # 헤딩 + 빈 줄 + 구분선 — 총합 상한을 결정 수에서 유도한다
 REFDOC_NOTE=700                      # 참조 문서 분할 권고선 (캡 아님)
+# 세션 브리핑(scripts/session-brief.sh) 출력 = 매 세션 실제로 읽는 양. 캡들이 전부 초록인 채로
+# 이 값이 커질 수 있으므로 따로 잰다. 커지면 브리핑에 들어가는 *조각*을 줄인다.
+BRIEF_SOFT=14000; BRIEF_HARD=20000
 
 # CLAUDE.md 심화 상한. **아래 값은 CLAUDE.md 의 "상한 계약" 줄과 일치해야 한다** (§B-6).
 # 상한을 늘려 우회하려면 문서와 이 파일을 둘 다 고쳐야 한다 — 그래서 조용히 미끄러지지 않는다.
@@ -118,13 +132,108 @@ check "docs/session-log.md" "$(_lines docs/session-log.md)" "$SESSLOG_SOFT" "$SE
 check "  └ 항목 개수" "$(_count docs/session-log.md '^## ')" "$SESSENT_SOFT" "$SESSENT_HARD" "개" \
   "최근 ${SESSENT_SOFT}개만 남기고 회전 (context-budget.md §4)"
 
+# 항목당 본문 길이 — **이것이 실제 세션 시작 비용이다.** 위 두 검사(총 줄 수·항목 개수)는
+# 회전 트리거일 뿐 브리핑 크기와 무관하다. 긴 항목 하나가 브리핑을 삼키는 것을 막는다.
+if [ -f docs/session-log.md ]; then
+  _sess_bodies() {
+    awk '
+      /^## / { if (t != "") emit(); t = $0; n = 0; last = 0; seen = 0; next }
+      t != "" {
+        # 빈 줄·구분선·인용(회전 절차가 요구하는 "> 이전 이력" 꼬리말)은 본문이 아니다.
+        # 이걸 안 빼면 파일 꼬리말이 **마지막 항목의 본문으로 계산돼** 4줄이 덤으로 붙는다.
+        if ($0 ~ /^[[:space:]]*$/ || $0 == "---" || $0 ~ /^> /) { n++; next }
+        if (!seen) { n = 0; seen = 1 }
+        n++; last = n
+      }
+      END { if (t != "") emit() }
+      function emit() {
+        if (last > LIM) { split(t, w, " "); printf "%s%s(%d) ", w[2], w[3], last }
+      }
+    ' LIM="$1" docs/session-log.md
+  }
+  sess_hard=$(_sess_bodies "$SESSBODY_HARD")
+  sess_soft=$(_sess_bodies "$SESSBODY_SOFT")
+  if [ -n "$sess_hard" ]; then
+    printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 항목당 본문" "${SESSBODY_HARD}줄 초과: $sess_hard"
+    ACTIONS+=("${RED}[HARD]${OFF} session-log.md → $sess_hard 를 ${SESSBODY_SOFT}줄 이내로 압축 (상세는 decisions.md 로)")
+    fail=1
+  elif [ -n "$sess_soft" ]; then
+    printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 항목당 본문" "${SESSBODY_SOFT}줄 초과: $sess_soft"
+    ACTIONS+=("${YEL}[soft]${OFF} session-log.md → $sess_soft 를 ${SESSBODY_SOFT}줄 이내로 압축")
+    warn=1
+  else
+    printf '%s  ok  %s %-34s %s\n' "$GRN" "$OFF" "  └ 항목당 본문" \
+      "$(_count docs/session-log.md '^## ')개 전부 ${SESSBODY_SOFT}줄 이내"
+  fi
+fi
+
 # ── §A-4 todo.md ───────────────────────────────────────────────────────────
 check "docs/todo.md" "$(_lines docs/todo.md)" "$TODO_SOFT" "$TODO_HARD" "줄" \
   "완료된 Phase 를 docs/archive/todo-done.md 로 회전"
 
-# ── §A-5 decisions.md — 회전하지 않고 압축한다 ──────────────────────────────
-check "docs/decisions.md" "$(_lines docs/decisions.md)" "$DEC_SOFT" "$DEC_HARD" "줄" \
-  "각 결정 본문을 20줄 이내로 압축. 상세는 참조 문서로 (§5 — 회전 금지)"
+# ★ 마커 — scripts/session-brief.sh 가 이걸로 "현재 Phase" 를 찾는다. 없으면 브리핑이
+# Phase 목록만 뱉거나(정보 손실) 읽는 쪽이 파일 전체를 열게 된다. 읽기 프로토콜의 일부다.
+if [ -f docs/todo.md ]; then
+  star=$(_count docs/todo.md '^## .*★')
+  if [ "$star" -eq 0 ]; then
+    bad "  └ ★ 현재 Phase 마커 없음" \
+        "docs/todo.md 의 진행 중인 Phase 헤딩에 ★ 를 붙인다 (session-brief.sh 가 읽는다)"
+  elif [ "$star" -gt 2 ]; then
+    meh "  └ ★ 마커 ${star}개 — 브리핑이 커진다" \
+        "docs/todo.md 의 ★ 는 1~2개만 (끝난 Phase 에서 뗀다)"
+  else
+    good "  └ ★ 현재 Phase 마커 ${star}개 ${DIM}(session-brief.sh 가 이 절만 출력)${OFF}"
+  fi
+fi
+
+# ── §A-5 decisions.md — 회전하지 않고 압축한다. 재는 것은 **결정당 본문** 이다 ────────
+#     총합 상한은 결정 수에서 유도한다 — 결정이 늘었다는 이유로 빨개지면 가드는 무르게 된다.
+if [ -f docs/decisions.md ]; then
+  n_dec=$(_count docs/decisions.md '^## D-[0-9]{3}')
+  pre=$(awk '/^## D-[0-9]{3}/{print NR-1; exit}' docs/decisions.md)
+  [ -n "$pre" ] || pre=0
+  if [ "$n_dec" -gt 0 ]; then
+    check "docs/decisions.md" "$(_lines docs/decisions.md)" \
+      "$(( pre + n_dec * (DECBODY_SOFT + DEC_OVERHEAD) ))" \
+      "$(( pre + n_dec * (DECBODY_HARD + DEC_OVERHEAD) ))" "줄" \
+      "결정당 본문을 ${DECBODY_SOFT}줄 이내로 압축한다 (§5 — 회전 금지)"
+    # 결정별 본문 길이 — 앞뒤 빈 줄과 구분선을 뺀 실제 내용
+    long=$(awk '
+      /^## D-[0-9]{3}/ { if (id != "") emit(); id = substr($2, 1, 5); n = 0; last = 0; seen = 0; next }
+      id != "" {
+        if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
+        if (!seen) { n = 0; seen = 1 }
+        n++; last = n
+      }
+      END { if (id != "") emit() }
+      function emit() { if (last > LIM) printf "%s(%d) ", id, last }
+    ' LIM="$DECBODY_SOFT" docs/decisions.md)
+    if [ -n "$long" ]; then
+      over=$(awk '
+        /^## D-[0-9]{3}/ { if (id != "") emit(); id = substr($2, 1, 5); n = 0; last = 0; seen = 0; next }
+        id != "" {
+          if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
+          if (!seen) { n = 0; seen = 1 }
+          n++; last = n
+        }
+        END { if (id != "") emit(); print (worst > HARD) ? "hard" : "soft" }
+        function emit() { if (last > worst) worst = last }
+      ' HARD="$DECBODY_HARD" docs/decisions.md)
+      if [ "$over" = hard ]; then
+        printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "${DECBODY_HARD}줄 초과: $long"
+        ACTIONS+=("${RED}[HARD]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
+        fail=1
+      else
+        printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 결정당 본문" "${DECBODY_SOFT}줄 초과: $long"
+        ACTIONS+=("${YEL}[soft]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
+        warn=1
+      fi
+    else
+      printf '%s  ok  %s %-34s %s\n' "$GRN" "$OFF" "  └ 결정당 본문" \
+        "${n_dec}개 전부 ${DECBODY_SOFT}줄 이내"
+    fi
+  fi
+fi
 
 # ── §A-6 decisions.md 인덱스 표 — 세션 시작에 읽는 것이 이 표뿐이다 ──────────
 if [ -f docs/decisions.md ]; then
@@ -141,6 +250,16 @@ if [ -f docs/decisions.md ]; then
   else
     printf '%s  ok  %s %-34s %4d개 %s(본문과 일치)%s\n' "$GRN" "$OFF" "  └ 결정 인덱스 표" "$idx" "$DIM" "$OFF"
   fi
+fi
+
+# ── §A-6b 세션 브리핑 출력 크기 — **이것이 실제 세션 시작 비용이다** ─────────
+#     위 캡들은 전부 파일 크기를 잰다. 정작 매 세션 읽는 양은 아무도 안 재고 있었고,
+#     그래서 모든 캡이 초록인 채로 읽기 비용이 4.2배가 돼 있던 저장소가 있었다.
+#     숫자를 문서에 적지 않고 여기서 잰다 — 적어 두면 문서가 자기 상태를 두고 거짓말한다.
+if [ -x scripts/session-brief.sh ]; then
+  brief_chars=$(bash scripts/session-brief.sh 2>/dev/null | wc -m | tr -d ' ')
+  check "세션 브리핑 출력" "${brief_chars:-0}" "$BRIEF_SOFT" "$BRIEF_HARD" "자" \
+    "브리핑에 들어가는 조각을 줄인다 — current-task 압축 · 로그 항목당 본문 · 결정 인덱스 행"
 fi
 
 # ── §A-7 참조 문서 — 캡 없음. 세션 시작에 읽지 않기 때문이다 ─────────────────
@@ -218,45 +337,51 @@ if [ -f CLAUDE.md ]; then
 
   # B-5 백틱 경로가 실제로 존재하는가 — 파일을 옮기고 문서를 안 고치면 허브가 조용히 거짓말한다
   #     `bash scripts/x.sh` 처럼 명령이 섞인 경우가 있어 공백으로 쪼갠 뒤 '/' 포함 토큰만 본다.
-  mapfile -t path_refs < <(
+  path_refs=$(
     grep -oE '`[^`]+`' CLAUDE.md | tr -d '`' | tr ' ' '\n' |
       sed 's/[),.:;]*$//' | grep '/' |
       grep -vE '^~|://|\*|<|>|YYYY|NNN|\{' | sort -u
   )
-  missing_paths=()
-  for p in "${path_refs[@]:-}"; do
-    [ -n "$p" ] || continue
-    [ -e "$p" ] || missing_paths+=("$p")
-  done
-  if [ "${#missing_paths[@]}" -gt 0 ]; then
-    bad "  존재하지 않는 경로: ${missing_paths[*]}" \
+  path_n=0; missing_paths=
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    path_n=$((path_n + 1))
+    [ -e "$ref" ] || missing_paths="$missing_paths $ref"
+  done < <(printf '%s\n' "$path_refs")
+  if [ -n "$missing_paths" ]; then
+    bad "  존재하지 않는 경로:$missing_paths" \
         "옮겼거나 지웠다면 CLAUDE.md 도 고친다 (또는 해당 디렉터리를 만든다)"
   else
-    good "  백틱 경로 ${#path_refs[@]}건 전부 존재"
+    good "  백틱 경로 ${path_n}건 전부 존재"
   fi
 
   # B-6 D-번호가 decisions.md 에 정의돼 있는가
   if [ -f docs/decisions.md ]; then
-    mapfile -t d_refs < <(grep -oE 'D-[0-9]{3}' CLAUDE.md | sort -u)
-    mapfile -t d_def  < <(sed -nE 's/^#{2,3} *(D-[0-9]{3}).*/\1/p' docs/decisions.md | sort -u)
-    undefined=()
-    for d in "${d_refs[@]:-}"; do
+    d_refs=$(grep -oE 'D-[0-9]{3}' CLAUDE.md | sort -u)
+    d_def=$(sed -nE 's/^#{2,3} *(D-[0-9]{3}).*/\1/p' docs/decisions.md | sort -u)
+    ref_n=0; undefined=
+    while IFS= read -r d; do
       [ -n "$d" ] || continue
-      printf '%s\n' "${d_def[@]:-}" | grep -qx "$d" || undefined+=("$d")
-    done
-    if [ "${#undefined[@]}" -gt 0 ]; then
-      bad "  decisions.md 에 없는 결정 참조: ${undefined[*]}" \
+      ref_n=$((ref_n + 1))
+      printf '%s\n' "$d_def" | grep -qx "$d" || undefined="$undefined $d"
+    done < <(printf '%s\n' "$d_refs")
+    def_n=0
+    while IFS= read -r d; do
+      [ -n "$d" ] && def_n=$((def_n + 1))
+    done < <(printf '%s\n' "$d_def")
+    if [ -n "$undefined" ]; then
+      bad "  decisions.md 에 없는 결정 참조:$undefined" \
           "해당 D-번호를 decisions.md 에 정의하거나 CLAUDE.md 의 참조를 고친다"
     else
-      good "  D-번호 참조 ${#d_refs[@]}건 전부 해결"
+      good "  D-번호 참조 ${ref_n}건 전부 해결"
     fi
     # B-7 스캔 sanity — 조용히 0건이면 위 검사가 전부 무의미해진다 (통과처럼 보이는 실패)
-    if [ "${#d_refs[@]}" -gt 0 ] && [ "${#d_def[@]}" -eq 0 ]; then
+    if [ "$ref_n" -gt 0 ] && [ "$def_n" -eq 0 ]; then
       bad "  decisions.md 정의 스캔이 0건 — D-번호 검사가 무의미해졌다" \
           "decisions.md 의 '## D-NNN' 제목 형식을 확인한다"
     fi
   fi
-  if [ "${#path_refs[@]}" -eq 0 ]; then
+  if [ "$path_n" -eq 0 ]; then
     meh "  경로 스캔 결과 0건 — 백틱 표기가 바뀌었는지 확인" \
         "CLAUDE.md 가 위치 인덱스로 기능하는지 확인 (규칙 허브는 어딘가를 가리켜야 한다)"
   fi
@@ -264,14 +389,13 @@ if [ -f CLAUDE.md ]; then
   # B-8 상한 계약 줄 ↔ 이 스크립트 상수 일치 (상한의 단일 진실 원천)
   #     문서가 자기 상한을 선언하고 가드가 그걸 대조한다. 상한을 늘리려면 둘 다 고쳐야 하므로
   #     "일단 늘리고 보자"가 안 된다.
-  declare -A want=( [전체]="$HUB_CHARS" [줄]="$CLAUDE_HARD" [한줄]="$HUB_LINELEN" [섹션]="$HUB_SECTION" )
   d_chars=$(sed -nE 's/.*전체 `([0-9]+)자`.*/\1/p' CLAUDE.md | head -1)
   d_lines=$(sed -nE 's/.*전체 `([0-9]+)줄`.*/\1/p' CLAUDE.md | head -1)
   d_llen=$(sed -nE 's/.*한 줄 `([0-9]+)자`.*/\1/p' CLAUDE.md | head -1)
   d_sect=$(sed -nE 's/.*섹션 `([0-9]+)줄`.*/\1/p' CLAUDE.md | head -1)
   contract_bad=""
-  for pair in "chars:$d_chars:${want[전체]}" "lines:$d_lines:${want[줄]}" \
-              "lineLen:$d_llen:${want[한줄]}" "section:$d_sect:${want[섹션]}"; do
+  for pair in "chars:$d_chars:$HUB_CHARS" "lines:$d_lines:$CLAUDE_HARD" \
+              "lineLen:$d_llen:$HUB_LINELEN" "section:$d_sect:$HUB_SECTION"; do
     k=${pair%%:*}; rest=${pair#*:}; got=${rest%%:*}; exp=${rest##*:}
     if [ -z "$got" ]; then contract_bad="$contract_bad $k(선언없음)"
     elif [ "$got" != "$exp" ]; then contract_bad="$contract_bad $k(문서$got≠가드$exp)"

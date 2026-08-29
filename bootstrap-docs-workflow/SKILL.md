@@ -25,8 +25,22 @@ changelog. A scaffold without the guard is a slow context leak.
 So this skill installs both. The key insight, which shapes §2 and §3:
 
 > **Capping file size is the second line of defence. The first is bounding how much gets read.**
-> `CLAUDE.md` must say "read the last 3 log entries / the decisions index only", not "read these
-> files". Then `session-log.md` can reach 3,000 lines with session-start cost unchanged.
+> Then `session-log.md` can reach 3,000 lines with session-start cost unchanged.
+
+**And bounding it in prose does not work.** An earlier version of this skill wrote the protocol as
+a list — "read the last 3 log entries / the decisions index only" — and it read correctly but was
+never followed, because *there is no line number anywhere to cut on*, so the reader opens whole
+files. Measured on a real repo 30 sessions in: **11,754 chars by the rule, 49,654 by the files —
+4.2x**, and widening, because each new decision adds 1 index line but ~23 body lines. The very
+O(history) growth the policy declares it has solved reproduces inside the file that is deliberately
+never rotated.
+
+> **So a script cuts the ranges, and its output is the whole of session-start reading.**
+> `CLAUDE.md` points at one command, not at a list of files. Judgement calls the script cannot make
+> — "which is the current phase?" — become a `★` marker the script greps for, not a human decision.
+
+That failure is invisible to every file-size cap: it happened with **all caps green**. So the guard
+also measures the briefing itself.
 
 `CLAUDE.md` is the one exception — auto-loading means no read protocol can protect it, so it gets a
 hard line cap and a no-net-growth rule written into the file itself.
@@ -75,12 +89,16 @@ demotes to "★previous entry point★".
 
 <one paragraph: what we're building and the immediate next priority>
 
-## 진입점 (Entry points, newest on top)
+## 진입점 (Entry point)
 
 - **★현재 진입점★ — <YYYY-MM-DD> 프로젝트 부트스트랩. 방법론 문서 구조 생성.**
 
-> 진입점은 최대 5개. 초과분은 삭제한다 (`session-log.md` 에 남아 있다).
+> 진입점은 **1개**. 그 앞의 이력은 `session-brief.sh` 가 `session-log.md` 최근 3개로 이미
+> 보여준다 — 여기에 목록을 또 두면 같은 것을 매 세션 두 번 읽는다.
 ```
+
+Keep it at one. A list here duplicates exactly what the briefing already prints from `session-log`,
+so every session reads the same headings twice.
 
 ### `docs/session-log.md` — what was done, newest first
 
@@ -120,7 +138,7 @@ CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commi
 
 | D | 결정 | 상태 |
 | --- | --- | --- |
-| D-002 | 컨텍스트 예산 안전장치 — 읽기 범위 고정 + 캡 + 회전 | 유효 |
+| D-002 | 컨텍스트 예산 안전장치 — 브리핑 스크립트 + 캡 + 회전 | 유효 |
 | D-001 | 문서 기반 작업 규율 채택 | 유효 |
 
 > 번호는 재사용하지 않는다. 뒤집힌 결정은 지우지 않고 상태를 `폐기(→D-0NN)` 로 바꾼다.
@@ -130,12 +148,15 @@ CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commi
 ## D-002. 컨텍스트 예산 안전장치
 
 **결정:** 기록 파일의 단조 증가가 세션 시작 비용을 늘리는 것을 막는다. 3중 방어:
-① 읽기 범위 고정(CLAUDE.md 가 "이만큼만 읽어라"), ② 캡(`scripts/check-docs-budget.sh`,
-pre-commit 훅), ③ 초과분 `docs/archive/` 회전. 정책 전문 `docs/context-budget.md`.
+① **읽기 범위를 스크립트가 고정**(`scripts/session-brief.sh` 출력이 세션 시작 읽기의 전부),
+② 캡(`scripts/check-docs-budget.sh`, pre-commit 훅), ③ 초과분 `docs/archive/` 회전.
+정책 전문 `docs/context-budget.md`.
 
 **이유:** 파일이 커지는 것 자체는 문제가 아니다. **매 세션 읽는 양이 커지는 것**이 문제다.
-캡만 걸면 회전 노동만 늘고 원인이 남으므로 ①이 핵심이고 ②③은 보조다. `CLAUDE.md` 만은
-매 세션 자동 로드되어 읽기 프로토콜로 방어할 수 없어 하드 캡 + 순증 금지 규칙을 적용한다.
+캡만 걸면 회전 노동만 늘고 원인이 남으므로 ①이 핵심이고 ②③은 보조다. 그리고 ①을 산문으로
+적으면 안 지켜진다 — 자를 줄 번호가 없어 결국 파일 전체가 읽힌다(실측 4.2배). 스크립트가
+자른다. `CLAUDE.md` 만은 매 세션 자동 로드되어 읽기 프로토콜로 방어할 수 없어 하드 캡 +
+순증 금지 규칙을 적용한다.
 
 ---
 
@@ -155,11 +176,14 @@ pre-commit 훅), ③ 초과분 `docs/archive/` 회전. 정책 전문 `docs/conte
 전체 작업 목록. `[x]` 완료, `[ ]` 미완, `[~]` 진행중.
 완료된 Phase 는 `docs/archive/todo-done.md` 로 회전한다.
 
-## Phase 0. 기반
+## ★ Phase 0. 기반 — **현재 Phase**
 - [x] 문서 구조 생성 (current-task / session-log / decisions / todo / recovery / context-budget)
-- [x] 컨텍스트 예산 안전장치 — `scripts/check-docs-budget.sh` + pre-commit 훅 (D-002)
+- [x] 컨텍스트 예산 안전장치 — `session-brief.sh` + `check-docs-budget.sh` + pre-commit 훅 (D-002)
 - [ ] <first real task>
 ```
+
+**The `★` is load-bearing** — `session-brief.sh` prints only the marked section, and the guard fails
+hard when no heading carries it. Move it to the phase in progress; never leave two or more.
 
 ### `docs/recovery.md` — what survives a fresh environment, and how to rebuild
 
@@ -214,16 +238,22 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 ## 1. 원칙 — 크기 제한보다 "읽는 양의 고정"이 먼저다
 
 파일이 커지는 것 자체는 문제가 아니다. **매 세션 읽는 양이 커지는 것**이 문제다.
-그래서 1차 방어선은 캡이 아니라 `CLAUDE.md` 의 읽기 프로토콜이다.
+그래서 1차 방어선은 캡이 아니라 읽기 프로토콜이다.
 
-| 파일 | 세션 시작에 읽는 범위 | 비용 |
+**단, 프로토콜을 산문으로만 적으면 지켜지지 않는다.** "최근 3개만" 이라고 써 두어도 읽는 쪽은
+파일 단위로 읽는다 — 범위를 자를 줄 번호가 어디에도 없기 때문이다. 그래서 범위를 **스크립트가
+자른다**: `bash scripts/session-brief.sh` 한 번이 세션 시작 읽기의 전부다.
+
+| 파일 | 브리핑이 잘라 주는 범위 | 비용 |
 | --- | --- | --- |
 | `current-task.md` | 전문 | O(1) — 캡이 걸려 있음 |
-| `session-log.md` | **최근 3개 항목** | O(1) — 파일이 커져도 불변 |
-| `decisions.md` | **상단 인덱스 표만** | O(결정 수), 한 줄씩 |
-| `todo.md` | **현재 Phase만** | O(1) |
-| 참조 문서(설계·스펙) | 읽지 않음 (해당 작업 진입 시에만) | 0 |
-| `archive/` | 읽지 않음 (명시적으로 찾을 때만) | 0 |
+| `session-log.md` | **최근 3개 항목** (머리말도 자른다) | O(1) — 파일이 커져도 불변 |
+| `decisions.md` | 첫 결정 본문 **앞까지** = 머리말 + 인덱스 표 | O(결정 수), 한 줄씩 |
+| `todo.md` | **`★` 표시된 Phase 만** | O(1) |
+| 참조 문서(설계·스펙) · `archive/` | 출력하지 않음 | 0 |
+
+`★` 마커가 중요하다 — "현재 Phase" 를 사람 판단에 맡기면 결국 파일을 연다. 마커를 진행 중인
+Phase 로 옮기고, 없으면 가드가 hard 로 막는다(읽기 프로토콜이 깨진 상태이기 때문이다).
 
 `session-log.md` 가 3,000줄이 되어도 세션 시작 비용은 그대로다. **이게 핵심이다.**
 캡과 회전은 2차 방어선(파일 열람 부담, 검색 노이즈)일 뿐이다.
@@ -280,13 +310,27 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 | --- | --- | --- | --- |
 | `CLAUDE.md` | 60줄 | **80줄** | 내용을 `docs/` 로 밀어내고 한 줄 포인터로 교체 |
 | `docs/current-task.md` | 40줄 | 60줄 | 진입점 목록을 자름 (§4) |
-| `docs/current-task.md` 진입점 수 | 5개 | 7개 | 초과분 삭제 (session-log 에 중복) |
+| `docs/current-task.md` 진입점 수 | **1개** | 3개 | 초과분 삭제 — 브리핑이 session-log 최근 3개를 이미 보여준다 |
 | `docs/session-log.md` | 300줄 | 500줄 | 오래된 항목 회전 (§4) |
 | `docs/session-log.md` 항목 수 | 12개 | 20개 | 오래된 항목 회전 |
+| `docs/session-log.md` **항목당 본문** | **15줄** | **22줄** | 상세를 `decisions.md` 로 옮기고 항목엔 `D-번호`만 |
 | `docs/todo.md` | 120줄 | 200줄 | 완료 Phase 회전 |
-| `docs/decisions.md` | 400줄 | 700줄 | §5 — 회전하지 않고 압축한다 |
+| `docs/todo.md` `★` 마커 | — | **필수 1~2개** | 진행 중인 Phase 헤딩에 `★` (브리핑이 이걸로 찾는다) |
+| `docs/decisions.md` **결정당 본문** | **20줄** | **30줄** | §5 — 그 결정을 압축한다 |
+| `docs/decisions.md` 총합 | (파생) | (파생) | `서문 + 결정수 × (20\|30 + 4)` — 고정값이 아니다 |
+| **세션 브리핑 출력** | **14,000자** | **20,000자** | 브리핑에 들어가는 *조각*을 줄인다 |
 
-참조 문서(설계·스펙)는 캡이 없다 — 세션 시작에 읽지 않는다. 700줄을 넘기면 주제별 분할을 고려한다.
+**마지막 행이 제일 중요하다.** 위의 다른 캡은 전부 파일 크기를 잰다 — 정작 *매 세션 읽는 양*은
+아무도 안 잰다. 실제로 **모든 캡이 초록인 채로** 읽기 비용이 4.2배가 돼 있던 저장소가 있었다.
+그 숫자는 문서에 적지 않고 가드가 잰다 — 적어 두면 문서가 자기 상태를 두고 거짓말한다.
+
+**총합이 아니라 단위를 재는 이유.** 세션 시작에 읽히는 건 로그 *최근 3개*와 결정 *인덱스 표*
+뿐이다. 총 줄 수는 회전 트리거일 뿐이고, 긴 항목 하나가 브리핑을 삼킨다. 반대로 총합에 고정
+캡을 두면(결정은 계속 는다) 못 지킬 값이 되어 가드가 결국 무르게 만들어진다 — 그래서
+`decisions.md` 총합 상한은 **결정 수에서 유도**한다.
+
+참조 문서(설계·스펙)는 캡이 없다 — 세션 시작에 읽지 않는다. 700줄을 넘기면 주제별 분할을
+고려한다. (여기에 "현재 N줄" 을 적지 않는다 — 적어 두면 문서가 자기 상태를 두고 거짓말한다.)
 
 ## 4. 회전 절차 (rotate, 삭제가 아니다)
 
@@ -299,12 +343,22 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 3. `docs/session-log.md` 하단에 한 줄만 남긴다: `> 이전 이력: docs/archive/session-log-YYYY-MM.md`
 
 ### todo 회전
-완료된 Phase(전 항목 `[x]`)를 `docs/archive/todo-done.md` 로 이동하고,
-`docs/todo.md` 에는 `## Phase N. <제목> — 완료 (archive/todo-done.md)` 한 줄만 남긴다.
+1. **먼저 남은 미완 항목을 갈 Phase 로 이월시킨다** (`(3주차에서 이월)` 처럼 출처를 적는다).
+   "전 항목 `[x]`" 가 되기를 기다리면 미완 하나 때문에 **영원히 회전하지 않는다.**
+2. 그 다음 완료된 Phase 를 `docs/archive/todo-done.md` 로 이동하고, `docs/todo.md` 에는
+   `## Phase N. <제목> — 완료 (archive/todo-done.md)` 한 줄만 남긴다.
+3. `★` 마커를 새 현재 Phase 로 옮긴다.
+
+### 리포트·발표본 회전
+개정할 때마다 **새 날짜 파일**이 되는 산출물이 있으면(리포트·발표본) 현행판 하나만 남기고
+이전 판은 생성물(`.pptx`/`.docx` 등)까지 함께 `docs/archive/reports/` 로 옮긴다. 세션 시작에
+읽지 않아도 `grep -r docs/` 가 매번 n중으로 걸린다 — 어느 저장소에서는 거의 같은 발표본 3판이
+`docs/` 전체의 39% 였다. 아카이브된 판은 *그때의 기록*이므로 오늘의 값과 대조하는 테스트
+목록에서도 뺀다.
 
 ### current-task 정리
-진입점 목록은 **최대 5개**. 초과분은 그냥 삭제한다 — `session-log.md` 에 같은 내용이 있으므로
-아카이브할 필요가 없다. ★현재 진입점★ 마커는 새 항목을 올릴 때 ★이전 진입점★ 으로 강등한다.
+진입점은 **1개**. 초과분은 그냥 삭제한다 — 브리핑이 `session-log.md` 최근 3개를 이미
+보여주므로 목록을 또 두면 매 세션 두 번 읽는다. ★현재 진입점★ 마커는 새 항목으로 갈아 끼운다.
 
 ## 5. decisions.md 는 회전하지 않는다 — 압축한다
 
@@ -313,6 +367,9 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 
 - **상단 인덱스 표**를 유지한다 (D-번호 + 한 줄 + 상태). 세션 시작에 읽는 건 이 표뿐이다.
 - 각 결정 본문은 **20줄 이내.** 길어지면 상세를 참조 문서로 옮기고 결정에는 링크만 둔다.
+  **가드가 결정별로 이걸 잰다** (soft 20 · hard 30 — 위반한 D-번호를 찍는다). 총 줄 수에는
+  고정 캡을 두지 않는다 — 세션 시작에 읽는 건 인덱스 표뿐이라 총합은 세션 비용이 아니고,
+  못 지킬 고정값을 두면 가드가 결국 무르게 만들어진다.
 - 뒤집힌 결정은 지우지 않고 상태를 `폐기(→D-0NN)` 로 바꾼다. **번호는 재사용하지 않는다.**
 - hard 캡에 닿으면 `docs/archive/decisions-001-050.md` 로 **본문만** 분할하고
   인덱스 표는 `decisions.md` 에 전부 남긴다.
@@ -320,7 +377,8 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 ## 6. 점검
 
 ```bash
-bash scripts/check-docs-budget.sh     # 수동
+bash scripts/session-brief.sh         # 세션 시작 — 읽는 양이 여기서 고정된다
+bash scripts/check-docs-budget.sh     # 캡 점검 (수동)
 bash scripts/install-hooks.sh         # pre-commit 훅 설치 (클론마다 1회)
 ```
 
@@ -380,16 +438,17 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 > (pre-commit). 위반 시 **상한을 늘리지 말고** 내용을 `docs/` 로 옮긴다 — 상한을 고치려면 이 줄과
 > 스크립트를 **둘 다** 고쳐야 한다. 예산 정책 전문: `docs/context-budget.md`
 
-## 세션 시작 시 — 읽는 양을 고정한다 (이력이 길어져도 늘지 않는다)
-1. `docs/current-task.md` — 전문
-2. `docs/session-log.md` — **최근 3개 항목만.** 그 위로는 읽지 않는다
-3. `docs/decisions.md` — **상단 인덱스 표만.** 필요한 `D-번호`만 펼쳐 읽는다
-4. `docs/todo.md` — **현재 Phase만**
-5. `git log --oneline -10`
+## 세션 시작 시 — 읽는 양을 스크립트가 고정한다 (이력이 길어져도 늘지 않는다)
+**`bash scripts/session-brief.sh` 한 번이 세션 시작 읽기의 전부다.** 이 안에 들어 있는 것:
+`current-task.md` 전문 · `session-log.md` 최근 3개 · `decisions.md` 인덱스 표 ·
+`todo.md` 의 `★` 표시 Phase · `git log -10` + 작업 트리.
+
+**위 파일들을 직접 열지 않는다** — 열면 전체가 딸려 오고 그게 이 규율이 막는 것이다.
+필요한 `D-번호`·과거 세션은 그때 **범위를 지정해** 펼친다. 근거는 D-002.
 
 **세션 시작에 읽지 않는 것:** 참조 문서(설계·스펙 — 해당 작업에 들어갈 때만) ·
 `docs/archive/`(회전된 이력 — 명시적으로 찾을 때만)
-환경이 비어 있으면 이 순서 전에 `docs/recovery.md`.
+환경이 비어 있으면 이것보다 먼저 `docs/recovery.md`.
 
 ## 작업 규칙 (항상 적용)
 **모든 작업은 기록한다. 단 짧게 — 누적되는 파일이다.**
@@ -429,6 +488,7 @@ is given to you at invocation time:
 
 ```bash
 mkdir -p scripts
+cp "<skill base dir>/assets/session-brief.sh"       scripts/
 cp "<skill base dir>/assets/check-docs-budget.sh"   scripts/
 cp "<skill base dir>/assets/install-hooks.sh"       scripts/
 cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
@@ -436,11 +496,20 @@ chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
 ```
 
+- `session-brief.sh` — **the first line of defence, and the reason the protocol holds.** It cuts
+  each file to its session-start range and prints them as one briefing; `CLAUDE.md` points at this
+  command instead of listing files. Adjust the section list to the docs you actually created, and
+  keep `SESS_ENTRIES` in sync with the number `CLAUDE.md` quotes. It reads `todo.md`'s `★` marker
+  to find the current phase — a judgement the script cannot make otherwise, and one that sends the
+  reader back into the whole file if it is left implicit.
 - `check-docs-budget.sh` — two parts. **§A** caps file sizes/counts per `context-budget.md` §3.
   **§B** inspects `CLAUDE.md` structurally, because that file is auto-loaded and no read protocol
   can protect it. soft = warn (exit 0), hard = block (exit 1); every violation prints the specific
   action. Caps live in variables at the top; tune to project scale but keep the hub tight.
   Reference docs (any `docs/*.md` outside the core set) are auto-detected and reported **uncapped**.
+  It measures units, not just totals — per-log-entry and per-decision body length — because a single
+  long entry eats the briefing while every total stays green. And it measures the briefing's own
+  output size, which is the only number that *is* the session-start cost.
 - `claude-md-sections.txt` — the allowed `##` sections of `CLAUDE.md`, one heading per line.
   **Section sprawl is the main route to hub bloat**, so adding a section must touch the doc *and*
   this file. Edit it to match whatever headings you actually installed. Entries start with `## `;
@@ -486,8 +555,27 @@ Also worth injecting: a 300-char line, a `docs/` path that doesn't exist, a `D-9
 `claude-md-sections.txt` whose entries are all commented out (that last one must fail as
 "파싱 0건", not pass silently).
 
+**And the reading-protocol checks specifically** — these are the ones that protect the first line
+of defence, so a silent pass here is the most expensive kind:
+
+```bash
+sed -i 's/^## ★ Phase 0/## Phase 0/' docs/todo.md          # ★ 마커 제거
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"  # 브리핑이 현재 Phase 를 못 찾는다
+git checkout docs/todo.md
+
+printf '\nx\n%.0s' {1..40} >> docs/session-log.md          # 항목 하나를 비대하게
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"  # 총 줄 수는 여전히 초록이다
+git checkout docs/session-log.md
+```
+
+The second one is the point of the whole unit-vs-total distinction: the file-level cap does **not**
+fire, and without the per-entry check the guard reports all-green while the briefing has doubled.
+
 If `docs/decisions.md` has no index table, the script hard-fails by design — that table is what the
 session-start protocol reads, so its absence breaks the whole scheme.
+
+Finally, run `bash scripts/session-brief.sh` and read the output. It should be a few thousand
+characters, end at the index table (no `## D-` bodies), and print exactly one todo phase.
 
 ## 4. Report and offer the follow-up
 
@@ -499,12 +587,21 @@ pre-commit hook was installed or declined (existing hook). Then offer:
 - that the companion **`wrap-up-docs-commit`** skill closes out each work chunk (docs update →
   secret scan → commit → push) using this same discipline.
 
+Tell them the one command that matters day to day: **`bash scripts/session-brief.sh` at the start of
+every session** — that is the whole read, and opening the docs directly is what the discipline
+exists to prevent.
+
 Mention two things the user needs to know about the guard:
 
 - `.git/hooks` is **not** committed, so `bash scripts/install-hooks.sh` must be re-run after every
   fresh clone (it's in `docs/recovery.md` step 2 for that reason).
 - `git commit --no-verify` bypasses a hard block when they're mid-flight; the rotation should then be
   done within that session.
+
+If the project **already had** these docs (you skipped most files), the interesting question is not
+what was created but whether the reading protocol actually holds — an older install will have the
+prose-only version. Point at **`context-budget-audit`**, which measures the real session-start cost
+and retrofits the briefing, the unit checks, and the missed rotations.
 
 Do **not** commit here unless the user asks — creating the scaffold is itself the first thing a
 wrap-up would record.
