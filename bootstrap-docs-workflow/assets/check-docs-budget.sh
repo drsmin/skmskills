@@ -37,6 +37,14 @@ REFDOC_NOTE=700                      # 참조 문서 분할 권고선 (캡 아�
 # 세션 브리핑(scripts/session-brief.sh) 출력 = 매 세션 실제로 읽는 양. 캡들이 전부 초록인 채로
 # 이 값이 커질 수 있으므로 따로 잰다. 커지면 브리핑에 들어가는 *조각*을 줄인다.
 BRIEF_SOFT=14000; BRIEF_HARD=20000
+# 그 "조각" 들도 문자로 잰다. 위의 조각 캡들은 전부 **줄 수**인데 브리핑은 **문자**로
+# 재므로, 줄은 그대로인 채 한 줄이 두 배가 되면 아무도 빨개지지 않는다 — §2.2 가 CLAUDE.md 에서
+# 막은 실패가 브리핑 조각에서 반복됐다(어느 저장소: current-task 37줄 = 3,831자 · 줄당 103자).
+# 세 값의 합 + 결정 인덱스 + git 이 BRIEF_SOFT 가 되게 잡는다 — 인덱스는 잔차이고 계속 커진다.
+CURTASK_CHARS_SOFT=3200;  CURTASK_CHARS_HARD=4200   # 매 세션 전문을 읽는다
+SESS3_CHARS_SOFT=3000;    SESS3_CHARS_HARD=4200     # 브리핑이 펼치는 최근 3개 항목의 합
+TODOSTAR_CHARS_SOFT=2400; TODOSTAR_CHARS_HARD=3200  # ★ 절만 (나머지 Phase 는 안 읽는다)
+DECIDX_LEN_SOFT=100;      DECIDX_LEN_HARD=140       # 인덱스 한 행 — 결정당 브리핑 비용이다
 
 # CLAUDE.md 심화 상한. **아래 값은 CLAUDE.md 의 "상한 계약" 줄과 일치해야 한다** (§B-6).
 # 상한을 늘려 우회하려면 문서와 이 파일을 둘 다 고쳐야 한다 — 그래서 조용히 미끄러지지 않는다.
@@ -45,7 +53,21 @@ HUB_LINELEN=240                      # 표 행 하나가 비대화의 실제 경
 HUB_SECTION=25                        # 섹션 하나가 문서를 삼키는 것을 막는다
 SECTIONS_FILE=scripts/claude-md-sections.txt   # 허용 H2 목록 (없으면 해당 검사 생략)
 
+# ── 문서 형식 — 기존 프로젝트는 형식이 다르다. 못 알아보면 0건으로 **통과처럼** 보인다 ──
+ENTRY_HEAD='진입점|[Ee]ntry'        # current-task 에서 진입점 절을 찾는 헤딩 (ERE)
+DEC_ID='D-[0-9]{3}'                 # 결정 ID (ERE). 예: ADR 이면 'ADR-[0-9]{3}'
+DEC_HEAD='## '                      # 결정 본문 헤딩 머리. 예: '### '
+BUDGET_MODE=block                   # block = hard 시 커밋 차단 · warn = 도입 모드(알리기만)
+
+# 프로젝트별 값은 **이 파일이 아니라** scripts/docs-budget.conf 에 둔다(있으면 위 값을 덮는다).
+# 그래야 스킬의 새 가드로 이 파일을 갈아 끼워도 캡·형식·모드가 살아남는다. 단 HUB_* 를 여기서
+# 올려도 CLAUDE.md 의 계약 줄과 대조되므로(§B-8) 몰래 올리는 길은 여전히 없다.
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=.
+# shellcheck disable=SC1091
+[ -f "$ROOT/scripts/docs-budget.conf" ] && . "$ROOT/scripts/docs-budget.conf"
+DEC_BODY_RE="^${DEC_HEAD}${DEC_ID}"
+DEC_ROW_RE="^[|] *${DEC_ID}"
+
 cd "$ROOT" || exit 0
 
 if [ -t 1 ]; then
@@ -57,6 +79,61 @@ fi
 fail=0
 warn=0
 declare -a ACTIONS=()
+HEADROOM=""   # "정렬키|상태|표시명|값 / 문턱|여유" 줄들. bash 3.2 라 배열 대신 문자열.
+HR_PARENT=""  # 하위 항목("  └ …")에 붙일 직전 최상위 항목 이름
+HR_NOTE=""; HR_ROOM=0; HR_STAGE=0   # _hr_record 의 출력 (bash 는 값을 하나만 돌려준다)
+
+# 여유는 **다음 문턱**까지 잰다 — 통과면 권고선까지, 권고를 넘겼으면 한계까지, 한계를 넘겼으면
+# 초과분. hard 하나로만 재면 두 가지를 잃는다: ① 통과 행에서 "몇 줄 뒤에 노랑인지"가 안 보이고
+# ② soft/hard 비율이 행마다 33~75% 로 달라 순위가 섞인다(실제로 soft 를 넘긴 행이 통과 행
+# 아래로 깔렸다). 그래서 정렬은 **상태 먼저**(HARD > soft > ok), 같은 상태 안에서 문턱에 가까운 순.
+# 표시는 권고·한계를 **둘 다** 찍는다 — 하나만 찍으면 그 행의 다른 문턱이 화면에서 사라진다.
+_hr_record() {   # <표시명> <값> <soft> <hard> <단위>
+  local label=$1 n=$2 soft=$3 hard=$4 unit=$5 pct target tag key name
+  [ "$soft" -gt 0 ] || soft=$hard
+  if [ "$n" -gt "$hard" ]; then
+    HR_STAGE=2; HR_ROOM=$(( n - hard )); target=$hard; tag=HARD
+    pct=$(( n * 100 / hard ));  HR_NOTE="초과 ${HR_ROOM}${unit} · ${pct}%"
+  elif [ "$n" -gt "$soft" ]; then
+    HR_STAGE=1; HR_ROOM=$(( hard - n )); target=$hard; tag=soft
+    pct=$(( n * 100 / hard ));  HR_NOTE="여유 ${HR_ROOM}${unit} → 한계 · ${pct}%"
+  else
+    HR_STAGE=0; HR_ROOM=$(( soft - n )); target=$soft; tag=ok
+    pct=$(( n * 100 / soft ))
+    if [ "$soft" -eq "$hard" ]; then HR_NOTE="여유 ${HR_ROOM}${unit} → 한계 · ${pct}%"
+    else                             HR_NOTE="여유 ${HR_ROOM}${unit} → 권고 · ${pct}%"; fi
+  fi
+  [ "$pct" -gt 9999 ] && pct=9999
+  key=$(( HR_STAGE * 10000 + pct ))
+  name="$label"
+  case "$label" in
+    " "*) name="${HR_PARENT} ${label#"${label%%[! ]*}"}" ;;
+    *)    HR_PARENT="$label" ;;
+  esac
+  HEADROOM="${HEADROOM}${key}|${tag}|${name}|${n}${unit} / ${target}|${HR_NOTE}
+"
+}
+
+
+# 문자 수는 로케일에서 뗀다. `wc -m` 은 로케일이 비어 있으면(pre-commit 훅에서 흔하다)
+# 문자가 아니라 **바이트**를 센다 — 한글이 1.6배로 부풀어 CLAUDE.md 2,127자가 3,576 으로,
+# 브리핑 11,819자가 20,562 로 읽혔고 **없는 HARD 로 커밋을 막고 있었다**.
+#
+# UTF-8 은 이어지는 바이트가 전부 0x80~0xBF 이므로 그것만 지우면 문자당 정확히 1바이트가 남는다.
+# 로케일도 python 도 필요 없다 — 처음엔 python 으로 셌지만, 그러면 python 이 없는 환경에서
+# 바이트 근사로 조용히 떨어져 **거기서 다시 거짓 HARD 가 났다**(훅에서 실제로 재현했다).
+# 근사로 떨어지는 폴백을 두느니 폴백이 없는 쪽이 낫다. CR 은 지워 CRLF 를 한 자로 센다.
+_chars() {
+  LC_ALL=C tr -d '\r\200-\277' | LC_ALL=C wc -c | tr -d ' '
+}
+
+# 브리핑의 한 절만 떼어 문자로 센다. **브리핑 출력 자체를 자른다** — 여기서 파일을 다시
+# 슬라이스하면 브리핑과 가드가 서로 다른 범위를 재게 되고, 한쪽만 고치면 조용히 어긋난다.
+# 인자: <브리핑 출력> <절 머리글에 들어 있는 문자열>
+_brief_piece() {
+  printf '%s\n' "$1" | awk -v want="$2" '/^━━/ { on = (index($0, want) > 0) } on' | _chars
+}
+
 
 # 파일이 없으면 -1 을 돌려 "건너뜀" 으로 표시한다 (아직 만들지 않은 단계일 수 있다).
 #
@@ -81,7 +158,7 @@ _count() {
 _count_in_section() {
   [ -f "$1" ] || { echo -1; return; }
   awk -v want="$2" -v pat="$3" '
-    /^#+ /   { inside = (index($0, want) > 0); next }
+    /^#+ /   { inside = ($0 ~ want); next }
     inside && $0 ~ pat { c++ }
     END      { print c+0 }
   ' "$1"
@@ -94,16 +171,20 @@ check() {
     printf '%s  --  %s %-34s %s(파일 없음 — 건너뜀)%s\n' "$DIM" "$OFF" "$label" "$DIM" "$OFF"
     return
   fi
-  if [ "$n" -gt "$hard" ]; then
-    printf '%s HARD %s %-34s %4d%s  한계 %d\n' "$RED" "$OFF" "$label" "$n" "$unit" "$hard"
-    ACTIONS+=("${RED}[HARD]${OFF} $label → $action")
+  _hr_record "$label" "$n" "$soft" "$hard" "$unit"
+  if [ "$HR_STAGE" = 2 ]; then
+    printf '%s HARD %s %-34s %5d%s  권고 %d 한계 %d  %s%s%s\n' \
+      "$RED" "$OFF" "$label" "$n" "$unit" "$soft" "$hard" "$DIM" "$HR_NOTE" "$OFF"
+    ACTIONS+=("${RED}[HARD]${OFF} $label → $action ${DIM}(${HR_ROOM}${unit} 줄이면 통과)${OFF}")
     fail=1
-  elif [ "$n" -gt "$soft" ]; then
-    printf '%s soft %s %-34s %4d%s  권고 %d\n' "$YEL" "$OFF" "$label" "$n" "$unit" "$soft"
-    ACTIONS+=("${YEL}[soft]${OFF} $label → $action")
+  elif [ "$HR_STAGE" = 1 ]; then
+    printf '%s soft %s %-34s %5d%s  권고 %d 한계 %d  %s%s%s\n' \
+      "$YEL" "$OFF" "$label" "$n" "$unit" "$soft" "$hard" "$DIM" "$HR_NOTE" "$OFF"
+    ACTIONS+=("${YEL}[soft]${OFF} $label → $action ${DIM}(한계까지 ${HR_ROOM}${unit})${OFF}")
     warn=1
   else
-    printf '%s  ok  %s %-34s %4d%s %s(≤%d)%s\n' "$GRN" "$OFF" "$label" "$n" "$unit" "$DIM" "$soft" "$OFF"
+    printf '%s  ok  %s %-34s %5d%s  권고 %d 한계 %d  %s%s%s\n' \
+      "$GRN" "$OFF" "$label" "$n" "$unit" "$soft" "$hard" "$DIM" "$HR_NOTE" "$OFF"
   fi
 }
 
@@ -113,7 +194,8 @@ meh()  { printf '%s soft %s %s\n' "$YEL" "$OFF" "$1"; ACTIONS+=("${YEL}[soft]${O
 good() { printf '%s  ok  %s %s\n' "$GRN" "$OFF" "$1"; }
 
 printf '%s컨텍스트 예산 점검%s  %s(정책: docs/context-budget.md)%s\n\n' "$BLD" "$OFF" "$DIM" "$OFF"
-printf '%s§A 파일 크기·개수%s\n' "$BLD" "$OFF"
+printf '%s§A 파일 크기·개수%s  %s(여유는 다음 문턱까지 — 통과면 권고선, 넘겼으면 한계)%s\n' \
+  "$BLD" "$OFF" "$DIM" "$OFF"
 
 # ── §A-1 CLAUDE.md 줄 수 ────────────────────────────────────────────────────
 check "CLAUDE.md" "$(_lines CLAUDE.md)" "$CLAUDE_SOFT" "$CLAUDE_HARD" "줄" \
@@ -123,8 +205,14 @@ check "CLAUDE.md" "$(_lines CLAUDE.md)" "$CLAUDE_SOFT" "$CLAUDE_HARD" "줄" \
 check "docs/current-task.md" "$(_lines docs/current-task.md)" "$CURTASK_SOFT" "$CURTASK_HARD" "줄" \
   "진입점 목록을 잘라낸다 (session-log 에 중복 존재하므로 삭제 가능)"
 check "  └ 진입점 개수" \
-  "$(_count_in_section docs/current-task.md '진입점' '^- ')" "$ENTRY_SOFT" "$ENTRY_HARD" "개" \
+  "$(_count_in_section docs/current-task.md "$ENTRY_HEAD" '^- ')" "$ENTRY_SOFT" "$ENTRY_HARD" "개" \
   "오래된 진입점 삭제 (아카이브 불필요 — session-log 에 있음)"
+# 스캔 sanity — 진입점 절을 못 찾으면 위 검사는 0개로 **통과처럼** 보인다. 영어 헤딩
+# (`## Entry points`)이던 기존 프로젝트에서 진입점 5개가 "0개 ok" 로 찍혔다.
+if [ -f docs/current-task.md ] && ! grep -qE "^#+ .*(${ENTRY_HEAD})" docs/current-task.md; then
+  meh "  └ 진입점 절을 못 찾았다 (ENTRY_HEAD='${ENTRY_HEAD}')" \
+      "current-task.md 의 진입점 헤딩에 맞게 scripts/docs-budget.conf 의 ENTRY_HEAD 를 정한다"
+fi
 
 # ── §A-3 session-log.md — 최근 N개만 읽지만 회전 트리거 ─────────────────────
 check "docs/session-log.md" "$(_lines docs/session-log.md)" "$SESSLOG_SOFT" "$SESSLOG_HARD" "줄" \
@@ -151,19 +239,33 @@ if [ -f docs/session-log.md ]; then
       }
     ' LIM="$1" docs/session-log.md
   }
+  # 최댓값도 잰다 — "전부 15줄 이내" 는 여유가 0 인 것과 15 인 것을 똑같이 보이게 한다.
+  _sess_max() {
+    awk '
+      /^## / { if (t != "") { if (last > m) m = last } t = $0; n = 0; last = 0; seen = 0; next }
+      t != "" {
+        if ($0 ~ /^[[:space:]]*$/ || $0 == "---" || $0 ~ /^> /) { n++; next }
+        if (!seen) { n = 0; seen = 1 }
+        n++; last = n
+      }
+      END { if (last > m) m = last; print m+0 }
+    ' docs/session-log.md
+  }
+  sess_max=$(_sess_max)
+  _hr_record "  └ 항목당 본문" "$sess_max" "$SESSBODY_SOFT" "$SESSBODY_HARD" "줄"
   sess_hard=$(_sess_bodies "$SESSBODY_HARD")
   sess_soft=$(_sess_bodies "$SESSBODY_SOFT")
   if [ -n "$sess_hard" ]; then
-    printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 항목당 본문" "${SESSBODY_HARD}줄 초과: $sess_hard"
+    printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 항목당 본문" "최대 ${sess_max}줄 · ${SESSBODY_HARD}줄 초과: $sess_hard  ${DIM}${HR_NOTE}${OFF}"
     ACTIONS+=("${RED}[HARD]${OFF} session-log.md → $sess_hard 를 ${SESSBODY_SOFT}줄 이내로 압축 (상세는 decisions.md 로)")
     fail=1
   elif [ -n "$sess_soft" ]; then
-    printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 항목당 본문" "${SESSBODY_SOFT}줄 초과: $sess_soft"
+    printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 항목당 본문" "최대 ${sess_max}줄 · ${SESSBODY_SOFT}줄 초과: $sess_soft  ${DIM}${HR_NOTE}${OFF}"
     ACTIONS+=("${YEL}[soft]${OFF} session-log.md → $sess_soft 를 ${SESSBODY_SOFT}줄 이내로 압축")
     warn=1
   else
     printf '%s  ok  %s %-34s %s\n' "$GRN" "$OFF" "  └ 항목당 본문" \
-      "$(_count docs/session-log.md '^## ')개 전부 ${SESSBODY_SOFT}줄 이내"
+      "$(_count docs/session-log.md '^## ')개 · 최대 ${sess_max}줄  권고 ${SESSBODY_SOFT} 한계 ${SESSBODY_HARD}  ${DIM}${HR_NOTE}${OFF}"
   fi
 fi
 
@@ -189,17 +291,27 @@ fi
 # ── §A-5 decisions.md — 회전하지 않고 압축한다. 재는 것은 **결정당 본문** 이다 ────────
 #     총합 상한은 결정 수에서 유도한다 — 결정이 늘었다는 이유로 빨개지면 가드는 무르게 된다.
 if [ -f docs/decisions.md ]; then
-  n_dec=$(_count docs/decisions.md '^## D-[0-9]{3}')
-  pre=$(awk '/^## D-[0-9]{3}/{print NR-1; exit}' docs/decisions.md)
+  n_dec=$(_count docs/decisions.md "$DEC_BODY_RE")
+  pre=$(awk -v re="$DEC_BODY_RE" '$0 ~ re {print NR-1; exit}' docs/decisions.md)
   [ -n "$pre" ] || pre=0
   if [ "$n_dec" -gt 0 ]; then
     check "docs/decisions.md" "$(_lines docs/decisions.md)" \
       "$(( pre + n_dec * (DECBODY_SOFT + DEC_OVERHEAD) ))" \
       "$(( pre + n_dec * (DECBODY_HARD + DEC_OVERHEAD) ))" "줄" \
       "결정당 본문을 ${DECBODY_SOFT}줄 이내로 압축한다 (§5 — 회전 금지)"
+    dec_max=$(awk -v re="$DEC_BODY_RE" '
+      $0 ~ re { if (id != "") { if (last > m) m = last } id = 1; n = 0; last = 0; seen = 0; next }
+      id != "" {
+        if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
+        if (!seen) { n = 0; seen = 1 }
+        n++; last = n
+      }
+      END { if (last > m) m = last; print m+0 }
+    ' docs/decisions.md)
+    _hr_record "  └ 결정당 본문" "$dec_max" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
     # 결정별 본문 길이 — 앞뒤 빈 줄과 구분선을 뺀 실제 내용
-    long=$(awk '
-      /^## D-[0-9]{3}/ { if (id != "") emit(); id = substr($2, 1, 5); n = 0; last = 0; seen = 0; next }
+    long=$(awk -v re="$DEC_BODY_RE" -v idre="$DEC_ID" '
+      $0 ~ re { if (id != "") emit(); match($0, idre); id = substr($0, RSTART, RLENGTH); n = 0; last = 0; seen = 0; next }
       id != "" {
         if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
         if (!seen) { n = 0; seen = 1 }
@@ -209,36 +321,35 @@ if [ -f docs/decisions.md ]; then
       function emit() { if (last > LIM) printf "%s(%d) ", id, last }
     ' LIM="$DECBODY_SOFT" docs/decisions.md)
     if [ -n "$long" ]; then
-      over=$(awk '
-        /^## D-[0-9]{3}/ { if (id != "") emit(); id = substr($2, 1, 5); n = 0; last = 0; seen = 0; next }
-        id != "" {
-          if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
-          if (!seen) { n = 0; seen = 1 }
-          n++; last = n
-        }
-        END { if (id != "") emit(); print (worst > HARD) ? "hard" : "soft" }
-        function emit() { if (last > worst) worst = last }
-      ' HARD="$DECBODY_HARD" docs/decisions.md)
-      if [ "$over" = hard ]; then
-        printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "${DECBODY_HARD}줄 초과: $long"
+      # 판정은 최댓값 하나로 한다 — 같은 계산을 두 벌 두면 한쪽만 고치게 된다.
+      if [ "$dec_max" -gt "$DECBODY_HARD" ]; then
+        printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "최대 ${dec_max}줄 · ${DECBODY_HARD}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
         ACTIONS+=("${RED}[HARD]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
         fail=1
       else
-        printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 결정당 본문" "${DECBODY_SOFT}줄 초과: $long"
+        printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 결정당 본문" "최대 ${dec_max}줄 · ${DECBODY_SOFT}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
         ACTIONS+=("${YEL}[soft]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
         warn=1
       fi
     else
       printf '%s  ok  %s %-34s %s\n' "$GRN" "$OFF" "  └ 결정당 본문" \
-        "${n_dec}개 전부 ${DECBODY_SOFT}줄 이내"
+        "${n_dec}개 · 최대 ${dec_max}줄  권고 ${DECBODY_SOFT} 한계 ${DECBODY_HARD}  ${DIM}${HR_NOTE}${OFF}"
     fi
   fi
 fi
 
 # ── §A-6 decisions.md 인덱스 표 — 세션 시작에 읽는 것이 이 표뿐이다 ──────────
 if [ -f docs/decisions.md ]; then
-  idx=$(_count docs/decisions.md '^\| *D-[0-9]{3}')
-  bodies=$(_count docs/decisions.md '^## D-[0-9]{3}')
+  # 스캔 sanity — 결정 형식을 못 알아보면 본문 0 · 인덱스 0 이 "일치" 로 **통과처럼** 보인다.
+  # `### ADR-001` 형식이던 기존 프로젝트에서 실제로 아무것도 재지 않고 초록을 찍었다.
+  # 인덱스·목차 같은 머리 헤딩을 빼고도 헤딩이 있는데 결정이 0건이면 형식이 다른 것이다.
+  other_heads=$(grep -E '^#{2,3} ' docs/decisions.md | grep -vcE '^#{2,3} *(인덱스|[Ii]ndex|목차)') || other_heads=0
+  if [ "$(_count docs/decisions.md "$DEC_BODY_RE")" -eq 0 ] && [ "$other_heads" -gt 0 ]; then
+    bad "  └ 결정 형식을 인식하지 못했다 (헤딩 ${other_heads}개 · '${DEC_HEAD}${DEC_ID}' 0건)" \
+        "scripts/docs-budget.conf 에 DEC_ID·DEC_HEAD 를 이 저장소 형식으로 정한다 (예: DEC_ID='ADR-[0-9]{3}' DEC_HEAD='### ')"
+  fi
+  idx=$(_count docs/decisions.md "$DEC_ROW_RE")
+  bodies=$(_count docs/decisions.md "$DEC_BODY_RE")
   if [ "$idx" -eq 0 ] && [ "$bodies" -gt 0 ]; then
     printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정 인덱스 표" "없음 — 세션 시작 읽기 프로토콜이 깨진다"
     ACTIONS+=("${RED}[HARD]${OFF} decisions.md → 상단에 D-번호 인덱스 표를 만든다")
@@ -250,16 +361,71 @@ if [ -f docs/decisions.md ]; then
   else
     printf '%s  ok  %s %-34s %4d개 %s(본문과 일치)%s\n' "$GRN" "$OFF" "  └ 결정 인덱스 표" "$idx" "$DIM" "$OFF"
   fi
+
+  # 인덱스 **행 길이** — 결정 하나가 브리핑에 더하는 비용이 이 값이다. 표는 O(결정 수)로
+  # 커지는 유일한 절이므로(§1 의 표가 "O(결정 수) but 한 줄씩" 이라 허용한 자리), 행이 길어지면
+  # 그 허용이 깨진다. 본문 길이는 재고 있었지만 **행 길이는 아무도 안 재고 있었다**.
+  if [ "$idx" -gt 0 ]; then
+    # `awk length()` 는 로케일을 탄다 — 빈 로케일에서 바이트를 센다(같은 표가 101자 vs 186자로
+    # 갈렸고 **없는 HARD 로 커밋을 막았다**. §B-2 가 CLAUDE.md 에서 겪은 것과 같은 함정이다).
+    # _chars 와 같은 방법으로 뗀다: 이어지는 바이트를 지우면 문자당 1바이트가 남는다.
+    _idx_rows() { LC_ALL=C tr -d '\r\200-\277' < docs/decisions.md; }
+    idx_max=$(_idx_rows | LC_ALL=C awk -v re="$DEC_ROW_RE" '$0 ~ re { c = length($0); if (c > m) m = c } END { print m+0 }')
+    _hr_record "  └ 인덱스 행 길이" "$idx_max" "$DECIDX_LEN_SOFT" "$DECIDX_LEN_HARD" "자"
+    _idx_long() {
+      _idx_rows | LC_ALL=C awk -v lim="$1" -v re="$DEC_ROW_RE" '
+        $0 ~ re { if (length($0) > lim) { split($0, f, "|"); gsub(/ /, "", f[2]); printf "%s(%d) ", f[2], length($0) } }'
+    }
+    idx_hard=$(_idx_long "$DECIDX_LEN_HARD")
+    idx_soft=$(_idx_long "$DECIDX_LEN_SOFT")
+    if [ -n "$idx_hard" ]; then
+      printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 인덱스 행 길이" "최대 ${idx_max}자 · ${DECIDX_LEN_HARD}자 초과: $idx_hard  ${DIM}${HR_NOTE}${OFF}"
+      ACTIONS+=("${RED}[HARD]${OFF} decisions.md → 인덱스 행 $idx_hard 을 ${DECIDX_LEN_SOFT}자 이내로 (상세는 본문에 있다)")
+      fail=1
+    elif [ -n "$idx_soft" ]; then
+      printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 인덱스 행 길이" "최대 ${idx_max}자 · ${DECIDX_LEN_SOFT}자 초과: $idx_soft  ${DIM}${HR_NOTE}${OFF}"
+      ACTIONS+=("${YEL}[soft]${OFF} decisions.md → 인덱스 행 $idx_soft 을 ${DECIDX_LEN_SOFT}자 이내로 (상세는 본문에 있다)")
+      warn=1
+    else
+      printf '%s  ok  %s %-34s %s\n' "$GRN" "$OFF" "  └ 인덱스 행 길이" \
+        "최대 ${idx_max}자  권고 ${DECIDX_LEN_SOFT} 한계 ${DECIDX_LEN_HARD}  ${DIM}${HR_NOTE}${OFF}"
+    fi
+  fi
 fi
 
 # ── §A-6b 세션 브리핑 출력 크기 — **이것이 실제 세션 시작 비용이다** ─────────
 #     위 캡들은 전부 파일 크기를 잰다. 정작 매 세션 읽는 양은 아무도 안 재고 있었고,
 #     그래서 모든 캡이 초록인 채로 읽기 비용이 4.2배가 돼 있던 저장소가 있었다.
 #     숫자를 문서에 적지 않고 여기서 잰다 — 적어 두면 문서가 자기 상태를 두고 거짓말한다.
-if [ -x scripts/session-brief.sh ]; then
-  brief_chars=$(bash scripts/session-brief.sh 2>/dev/null | wc -m | tr -d ' ')
+#     조각도 같은 눈금(문자)으로 올린다 — "조각을 줄여라"만 적어 두면 **어느 조각인지**를
+#     매번 손으로 다시 재게 된다. 실제로 그랬다.
+# 실행 비트가 아니라 **파일 존재**로 문을 연다. `-x` 로 두면 실행 권한만 빠진 설치에서
+# 이 절이 통째로 조용히 건너뛰어진다 — 브리핑 캡이 없는데 가드는 초록을 찍는, 이 파일이
+# 가장 경계하는 "통과처럼 보이는 실패"다. 어차피 `bash <파일>` 로 부르므로 비트는 필요 없다.
+if [ -f scripts/session-brief.sh ]; then
+  brief_out=$(bash scripts/session-brief.sh 2>/dev/null)
+  brief_chars=$(printf '%s\n' "$brief_out" | _chars)
   check "세션 브리핑 출력" "${brief_chars:-0}" "$BRIEF_SOFT" "$BRIEF_HARD" "자" \
-    "브리핑에 들어가는 조각을 줄인다 — current-task 압축 · 로그 항목당 본문 · 결정 인덱스 행"
+    "아래 조각 중 빨간/노란 것을 줄인다 (인덱스가 잔차다 — 결정이 늘면 나머지를 줄인다)"
+
+  p_cur=$(_brief_piece "$brief_out" 'current-task')
+  p_ses=$(_brief_piece "$brief_out" 'session-log')
+  p_dec=$(_brief_piece "$brief_out" 'decisions.md')
+  p_tod=$(_brief_piece "$brief_out" 'todo.md')
+  p_git=$(_brief_piece "$brief_out" 'git 최근')
+  check "  └ current-task 전문" "${p_cur:-0}" "$CURTASK_CHARS_SOFT" "$CURTASK_CHARS_HARD" "자" \
+    "긴 줄을 쪼개지 말고 **덜어낸다** — D-번호로 대체 가능한 근거·수치는 decisions/todo 에 있다"
+  check "  └ 로그 최근 3개" "${p_ses:-0}" "$SESS3_CHARS_SOFT" "$SESS3_CHARS_HARD" "자" \
+    "새 항목을 짧게 쓴다 (지난 항목은 고치지 않는다 — 그때 한 말이 바뀐다). 상세는 decisions.md"
+  check "  └ todo ★ 절" "${p_tod:-0}" "$TODOSTAR_CHARS_SOFT" "$TODOSTAR_CHARS_HARD" "자" \
+    "끝난 항목을 archive/todo-done.md 로 회전 · 측정 상세는 decisions.md 로"
+  # 인덱스와 git 은 여기서 캡을 걸지 않는다 — 인덱스는 행 길이로(§A-6), git 은 상수(10커밋)로 이미 잡힌다.
+  printf '%s  --  %s %-34s %s인덱스 %s자 · git %s자 — 둘은 창(DEC_ROWS·GIT_LOG)으로 고정 · 행 길이는 §A-6%s\n' \
+    "$DIM" "$OFF" "  └ 나머지 조각" "$DIM" "${p_dec:-0}" "${p_git:-0}" "$OFF"
+else
+  printf '%s HARD %s %s\n' "$RED" "$OFF" " 세션 브리핑 출력          scripts/session-brief.sh 가 없다"
+  ACTIONS+=("${RED}[HARD]${OFF} scripts/session-brief.sh 를 설치한다 — 세션 시작 비용을 재는 유일한 검사다")
+  fail=1
 fi
 
 # ── §A-7 참조 문서 — 캡 없음. 세션 시작에 읽지 않기 때문이다 ─────────────────
@@ -281,19 +447,26 @@ done
 # ══ §B CLAUDE.md 심화 — 자동 로드되므로 읽기 프로토콜로 방어할 수 없다 ══════
 if [ -f CLAUDE.md ]; then
   printf '\n%s§B CLAUDE.md 구조 (자동 로드 — 별도 방어)%s\n' "$BLD" "$OFF"
+  HR_PARENT="CLAUDE.md"   # 아래 하위 항목들의 부모 (헤드룸 요약 표시용)
 
   # B-1 문자 수. 줄 수만 보면 긴 표 행 하나가 예산을 삼키는 걸 놓친다.
-  hub_chars=$(wc -m < CLAUDE.md | tr -d ' ')
+  hub_chars=$(_chars < CLAUDE.md)
   check "  문자 수" "$hub_chars" "$((HUB_CHARS * 8 / 10))" "$HUB_CHARS" "자" \
     "내용을 docs/ 로 옮긴다 (상한을 늘리지 말 것)"
 
   # B-2 한 줄 길이
-  read -r longest_len longest_no <<<"$(awk '{ if (length($0)>m) {m=length($0); n=NR} } END{print m+0, n+0}' CLAUDE.md)"
+  # `awk length()` 도 로케일을 탄다 — 빈 로케일에서는 바이트다(같은 파일이 133자 vs 79자로
+  # 갈렸다. 훅과 사람 셸의 로케일이 달라 **같은 커밋이 환경에 따라 다른 판정**을 받는다).
+  # _chars 와 같은 방법으로 뗀다: 이어지는 바이트를 지우면 문자당 1바이트가 남는다.
+  read -r longest_len longest_no <<<"$(LC_ALL=C tr -d '\r\200-\277' < CLAUDE.md |
+    LC_ALL=C awk '{ if (length($0)>m) {m=length($0); n=NR} } END{print m+0, n+0}')"
+  # 문턱이 하나뿐인 검사(soft 없음)도 같은 눈금에 올린다 — 안 올리면 순위에서 통째로 빠진다.
+  _hr_record "  최장 행" "$longest_len" "$HUB_LINELEN" "$HUB_LINELEN" "자"
   if [ "$longest_len" -gt "$HUB_LINELEN" ]; then
     bad "  최장 행 ${longest_no}행이 ${longest_len}자 > 상한 ${HUB_LINELEN}자" \
         "CLAUDE.md ${longest_no}행을 쪼개거나 내용을 docs/ 로 옮긴다"
   else
-    good "  최장 행 ${longest_len}자 ${DIM}(≤${HUB_LINELEN}, ${longest_no}행)${OFF}"
+    good "  최장 행 ${longest_len}자 ${DIM}(≤${HUB_LINELEN}, ${longest_no}행) ${HR_NOTE}${OFF}"
   fi
 
   # B-3 섹션(H2) 본문 줄 수 — 섹션 하나가 문서를 삼키는 것을 막는다
@@ -301,11 +474,12 @@ if [ -f CLAUDE.md ]; then
     /^## / { if (t!="") { if (c>m) {m=c; nm=t} } t=$0; c=0; next }
     t!=""  { c++ }
     END    { if (t!="") { if (c>m) {m=c; nm=t} } print m+0, nm }' CLAUDE.md)"
+  _hr_record "  최대 섹션 본문" "$sec_max" "$HUB_SECTION" "$HUB_SECTION" "줄"
   if [ "$sec_max" -gt "$HUB_SECTION" ]; then
     bad "  최대 섹션 본문 ${sec_max}줄 > 상한 ${HUB_SECTION}줄 (${sec_name})" \
         "해당 섹션을 docs/ 로 옮기고 한 줄 포인터만 남긴다"
   else
-    good "  최대 섹션 본문 ${sec_max}줄 ${DIM}(≤${HUB_SECTION})${OFF}"
+    good "  최대 섹션 본문 ${sec_max}줄 ${DIM}(≤${HUB_SECTION}) ${HR_NOTE}${OFF}"
   fi
 
   # B-4 허용 H2 목록 — 섹션 스프롤이 비대화의 1차 경로다.
@@ -357,8 +531,8 @@ if [ -f CLAUDE.md ]; then
 
   # B-6 D-번호가 decisions.md 에 정의돼 있는가
   if [ -f docs/decisions.md ]; then
-    d_refs=$(grep -oE 'D-[0-9]{3}' CLAUDE.md | sort -u)
-    d_def=$(sed -nE 's/^#{2,3} *(D-[0-9]{3}).*/\1/p' docs/decisions.md | sort -u)
+    d_refs=$(grep -oE "$DEC_ID" CLAUDE.md | sort -u)
+    d_def=$(sed -nE "s/^#{2,3} *(${DEC_ID}).*/\\1/p" docs/decisions.md | sort -u)
     ref_n=0; undefined=
     while IFS= read -r d; do
       [ -n "$d" ] || continue
@@ -409,6 +583,26 @@ if [ -f CLAUDE.md ]; then
   fi
 fi
 
+# ── 헤드룸 요약 — 급한 순서 ────────────────────────────────────────────────
+#     상태 먼저(HARD > soft > ok), 같은 상태 안에서는 다음 문턱에 가까운 순.
+#     문턱이 하나뿐인 구조 검사도 여기 들어온다 — 빠지면 여유 0 인 항목이 화면에서 사라진다.
+if [ -n "$HEADROOM" ]; then
+  printf '\n%s헤드룸%s %s(급한 순서 — 상태 먼저, 같은 상태면 다음 문턱에 가까운 순)%s\n' \
+    "$BLD" "$OFF" "$DIM" "$OFF"
+  printf '%s' "$HEADROOM" | grep -v '^[[:space:]]*$' | sort -t'|' -k1,1rn | head -5 |
+    while IFS='|' read -r key tag label vals note; do
+      case "$tag" in
+        HARD) c=$RED ;;
+        soft) c=$YEL ;;
+        *)    c=$GRN ;;
+      esac
+      # 폭 맞춤은 쓰지 않는다 — printf 는 바이트로 세고 한글은 3바이트라 어차피 어긋난다.
+      printf '  %s%4s%s  %s %s—%s %s · %s%s\n' \
+        "$c" "$tag" "$OFF" "$label" "$DIM" "$OFF" "$vals" "$note" "$OFF"
+    done
+fi
+
+
 # ── 결과 ───────────────────────────────────────────────────────────────────
 if [ ${#ACTIONS[@]} -gt 0 ]; then
   printf '\n%s할 일%s\n' "$BLD" "$OFF"
@@ -417,6 +611,14 @@ if [ ${#ACTIONS[@]} -gt 0 ]; then
 fi
 
 printf '\n%s구조만 검사했다 — 문장 표현·규칙 순서·내용의 정확성은 사람이 본다.%s\n' "$DIM" "$OFF"
+# 도입 모드 — 기존 프로젝트는 설치 순간 HARD 가 나는 게 정상이다(CLAUDE.md 가 허브가 아니다).
+# 그때부터 모든 커밋을 막으면 가드를 떼어 버리게 된다. warn 이면 같은 판정을 찍되 막지 않는다.
+# **판정은 그대로다** — 무르게 하는 게 아니라 차단만 미룬다. 이전이 끝나면 block 으로 올린다.
+if [ "$fail" = 1 ] && [ "$BUDGET_MODE" = warn ]; then
+  printf '%s✗ hard 한계 초과 — 도입 모드(BUDGET_MODE=warn)라 커밋은 막지 않는다.%s\n' "$YEL" "$OFF"
+  printf '  %s이전을 마치면 scripts/docs-budget.conf 에서 BUDGET_MODE=block 으로 올린다.%s\n' "$DIM" "$OFF"
+  exit 0
+fi
 if [ "$fail" = 1 ]; then
   printf '%s✗ hard 한계 초과 — 회전/압축 후 다시 커밋한다.%s\n' "$RED" "$OFF"
   printf '  %s급하면 git commit --no-verify 로 우회할 수 있지만, 그 세션 안에 처리한다.%s\n' "$DIM" "$OFF"

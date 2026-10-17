@@ -1,0 +1,19 @@
+# scripts/docs-budget.conf — 프로젝트별 값. check-docs-budget.sh 와 session-brief.sh 가 읽는다.
+# 스킬의 새 가드로 스크립트를 갈아 끼워도 이 파일은 남는다 — 커스텀은 스크립트가 아니라 여기에 둔다.
+# 필요한 줄만 주석을 풀어 쓴다. (bash 로 source 된다)
+
+# ── 도입 모드 — 기존 프로젝트는 warn 으로 시작해 이전을 마치면 block 으로 올린다
+# BUDGET_MODE=warn
+
+# ── 문서 형식 — 이 저장소의 형식에 맞춘다. 못 맞추면 가드가 "인식하지 못했다" 로 알린다
+# ENTRY_HEAD='진입점|[Ee]ntry'
+# DEC_ID='ADR-[0-9]{3}'
+# DEC_HEAD='### '
+
+# ── 브리핑 창 (CLAUDE.md 가 인용하는 숫자와 같게)
+# SESS_ENTRIES=3
+# DEC_ROWS=25
+
+# ── 캡 (CLAUDE.md 의 HUB_* 는 계약 줄과도 같이 고쳐야 한다)
+# BRIEF_SOFT=14000; BRIEF_HARD=20000
+# CURTASK_CHARS_SOFT=3200; CURTASK_CHARS_HARD=4200

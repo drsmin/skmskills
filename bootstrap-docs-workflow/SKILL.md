@@ -248,12 +248,19 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 | --- | --- | --- |
 | `current-task.md` | 전문 | O(1) — 캡이 걸려 있음 |
 | `session-log.md` | **최근 3개 항목** (머리말도 자른다) | O(1) — 파일이 커져도 불변 |
-| `decisions.md` | 첫 결정 본문 **앞까지** = 머리말 + 인덱스 표 | O(결정 수), 한 줄씩 |
+| `decisions.md` | 머리말 + 인덱스 표의 **최근 25행** (`DEC_ROWS`) | O(1) — 그 앞 행은 접고 `grep` 으로 펼친다 |
 | `todo.md` | **`★` 표시된 Phase 만** | O(1) |
 | 참조 문서(설계·스펙) · `archive/` | 출력하지 않음 | 0 |
 
 `★` 마커가 중요하다 — "현재 Phase" 를 사람 판단에 맡기면 결국 파일을 연다. 마커를 진행 중인
 Phase 로 옮기고, 없으면 가드가 hard 로 막는다(읽기 프로토콜이 깨진 상태이기 때문이다).
+
+**인덱스 표도 접는다.** "O(결정 수)지만 한 줄씩"은 허용해도 되는 증가가 아니었다 — 어느
+저장소에서 결정 54개에 4,538자, 브리핑의 32%였고, 결정이 하나 늘 때마다 ~80자씩 밀려 **열
+세션마다 예산을 다시 넘겼다.** 브리핑은 최근 `DEC_ROWS` 행만 싣고 그 앞은
+`… 그 앞 N행(D-0NN~D-001)은 접었다` 한 줄로 가리킨다. 가장 오래된 행을 접는 이유: 오래된
+결정은 대개 `current-task.md` 가 번호와 함께 이미 되짚고 있고, 표는 파일에 **그대로 남아**
+grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 유효하다).
 
 `session-log.md` 가 3,000줄이 되어도 세션 시작 비용은 그대로다. **이게 핵심이다.**
 캡과 회전은 2차 방어선(파일 열람 부담, 검색 노이즈)일 뿐이다.
@@ -318,11 +325,29 @@ Phase 로 옮기고, 없으면 가드가 hard 로 막는다(읽기 프로토콜�
 | `docs/todo.md` `★` 마커 | — | **필수 1~2개** | 진행 중인 Phase 헤딩에 `★` (브리핑이 이걸로 찾는다) |
 | `docs/decisions.md` **결정당 본문** | **20줄** | **30줄** | §5 — 그 결정을 압축한다 |
 | `docs/decisions.md` 총합 | (파생) | (파생) | `서문 + 결정수 × (20\|30 + 4)` — 고정값이 아니다 |
-| **세션 브리핑 출력** | **14,000자** | **20,000자** | 브리핑에 들어가는 *조각*을 줄인다 |
+| `docs/decisions.md` **인덱스 행 길이** | **100자** | **140자** | 그 행을 줄인다 — 상세는 본문에 있다 |
+| **세션 브리핑 출력** | **14,000자** | **20,000자** | 아래 조각 중 빨간/노란 것을 줄인다 |
+| └ current-task 전문 | 3,200자 | 4,200자 | 긴 줄을 쪼개지 말고 **덜어낸다** |
+| └ 로그 최근 3개 | 3,000자 | 4,200자 | 새 항목을 짧게 (지난 항목은 고치지 않는다) |
+| └ todo `★` 절 | 2,400자 | 3,200자 | 끝난 항목을 회전 |
 
-**마지막 행이 제일 중요하다.** 위의 다른 캡은 전부 파일 크기를 잰다 — 정작 *매 세션 읽는 양*은
-아무도 안 잰다. 실제로 **모든 캡이 초록인 채로** 읽기 비용이 4.2배가 돼 있던 저장소가 있었다.
+**브리핑 출력 행이 제일 중요하다.** 위의 다른 캡은 전부 파일 크기를 잰다 — 정작 *매 세션 읽는
+양*은 아무도 안 잰다. 실제로 **모든 캡이 초록인 채로** 읽기 비용이 4.2배가 돼 있던 저장소가 있었다.
 그 숫자는 문서에 적지 않고 가드가 잰다 — 적어 두면 문서가 자기 상태를 두고 거짓말한다.
+
+**조각도 문자로 잰다.** 조각 캡이 줄 수뿐이면, 줄은 그대로인 채 한 줄이 두 배가 될 때 아무도
+빨개지지 않는다 — §2 가 CLAUDE.md 에서 막은 실패가 브리핑 조각에서 반복됐다(current-task 37줄 =
+3,831자). 가드는 **브리핑 출력 자체를** 절 머리글로 잘라 잰다(파일을 다시 자르면 브리핑과 가드가
+다른 범위를 재게 된다). 인덱스와 git 은 창(`DEC_ROWS`·`GIT_LOG`)으로 고정돼 캡이 없다.
+
+**문자 수는 로케일에서 뗀다.** `wc -m`·`awk length()` 는 로케일이 비면(pre-commit 훅에서 흔하다)
+**바이트**를 센다 — 한글이 1.6배로 부풀어 없는 HARD 로 커밋을 막았다. UTF-8 의 이어지는 바이트
+(0x80~0xBF)를 지우고 바이트를 센다. 근사 폴백(python 등)은 두지 않는다 — 없는 환경에서 조용히
+바이트로 떨어져 거짓 HARD 가 다시 났다.
+
+**여유를 찍는다.** 가드는 행마다 **다음 문턱까지의 여유**(통과면 권고선까지, 넘겼으면 한계까지)를
+찍고, 끝에 급한 순서 5개(상태 먼저, 같은 상태면 문턱에 가까운 순)를 요약한다. 통과/실패만 찍으면
+"몇 줄 뒤에 노랑인지"가 안 보여 매번 손으로 다시 잰다.
 
 **총합이 아니라 단위를 재는 이유.** 세션 시작에 읽히는 건 로그 *최근 3개*와 결정 *인덱스 표*
 뿐이다. 총 줄 수는 회전 트리거일 뿐이고, 긴 항목 하나가 브리핑을 삼킨다. 반대로 총합에 고정
@@ -440,7 +465,7 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 
 ## 세션 시작 시 — 읽는 양을 스크립트가 고정한다 (이력이 길어져도 늘지 않는다)
 **`bash scripts/session-brief.sh` 한 번이 세션 시작 읽기의 전부다.** 이 안에 들어 있는 것:
-`current-task.md` 전문 · `session-log.md` 최근 3개 · `decisions.md` 인덱스 표 ·
+`current-task.md` 전문 · `session-log.md` 최근 3개 · `decisions.md` 인덱스 최근 25행 ·
 `todo.md` 의 `★` 표시 Phase · `git log -10` + 작업 트리.
 
 **위 파일들을 직접 열지 않는다** — 열면 전체가 딸려 오고 그게 이 규율이 막는 것이다.
@@ -453,8 +478,8 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 ## 작업 규칙 (항상 적용)
 **모든 작업은 기록한다. 단 짧게 — 누적되는 파일이다.**
 - 완료한 일 → `docs/session-log.md` 최상단. **항목당 15줄 이내**
-- 설계·방향 결정 → `docs/decisions.md` 에 `D-번호` + 근거. **상단 인덱스 표에 한 줄 추가**
-- 진행 상태 → `docs/todo.md` · `docs/current-task.md`(진입점 **최대 5개**, 초과분 삭제)
+- 설계·방향 결정 → `docs/decisions.md` 에 `D-번호` + 근거. **인덱스 표에 한 줄(100자 이내) 추가**
+- 진행 상태 → `docs/todo.md` · `docs/current-task.md`(진입점 **1개**, 나머지는 삭제)
 - 되돌리기 어려운 작업(외부 연동·push 등) → 결정으로 남김
 - 마일스톤마다 커밋하고 곧바로 push
 - 완료된 Phase·오래된 이력은 `docs/archive/` 로 회전시킨다 (삭제 아님)
@@ -492,6 +517,7 @@ cp "<skill base dir>/assets/session-brief.sh"       scripts/
 cp "<skill base dir>/assets/check-docs-budget.sh"   scripts/
 cp "<skill base dir>/assets/install-hooks.sh"       scripts/
 cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
+cp "<skill base dir>/assets/docs-budget.conf.example" scripts/   # 프로젝트별 값은 여기로
 chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
 ```
@@ -499,9 +525,11 @@ bash scripts/install-hooks.sh
 - `session-brief.sh` — **the first line of defence, and the reason the protocol holds.** It cuts
   each file to its session-start range and prints them as one briefing; `CLAUDE.md` points at this
   command instead of listing files. Adjust the section list to the docs you actually created, and
-  keep `SESS_ENTRIES` in sync with the number `CLAUDE.md` quotes. It reads `todo.md`'s `★` marker
-  to find the current phase — a judgement the script cannot make otherwise, and one that sends the
-  reader back into the whole file if it is left implicit.
+  keep `SESS_ENTRIES` and `DEC_ROWS` in sync with the numbers `CLAUDE.md` quotes. It reads
+  `todo.md`'s `★` marker to find the current phase — a judgement the script cannot make otherwise,
+  and one that sends the reader back into the whole file if it is left implicit. It also folds the
+  decisions index to its most recent `DEC_ROWS` rows: a full index was the one O(history) piece left
+  in the briefing. Keep the `━━ <file>` section headers — the guard cuts the briefing on them.
 - `check-docs-budget.sh` — two parts. **§A** caps file sizes/counts per `context-budget.md` §3.
   **§B** inspects `CLAUDE.md` structurally, because that file is auto-loaded and no read protocol
   can protect it. soft = warn (exit 0), hard = block (exit 1); every violation prints the specific
@@ -509,14 +537,28 @@ bash scripts/install-hooks.sh
   Reference docs (any `docs/*.md` outside the core set) are auto-detected and reported **uncapped**.
   It measures units, not just totals — per-log-entry and per-decision body length — because a single
   long entry eats the briefing while every total stays green. And it measures the briefing's own
-  output size, which is the only number that *is* the session-start cost.
+  output size, which is the only number that *is* the session-start cost — plus each briefing
+  piece in characters, because line caps miss a line that doubles. Every character count goes
+  through `_chars()` (strip UTF-8 continuation bytes, count bytes): `wc -m` and `awk length()`
+  count **bytes** under an empty locale, which is what a pre-commit hook usually has, and that
+  blocked commits with phantom HARDs. Each row prints its headroom to the next threshold, and a
+  top-5 headroom summary closes the run.
+- `docs-budget.conf.example` → `scripts/docs-budget.conf` (optional) — **project-specific values
+  live here, never in the scripts**: caps, briefing windows, `BUDGET_MODE`, and the document format
+  (`ENTRY_HEAD`, `DEC_ID`, `DEC_HEAD`). Both scripts source it, so replacing the scripts with a newer
+  skill version keeps every customization. HUB caps raised here still have to match the
+  `CLAUDE.md` contract line, so this is not a back door.
 - `claude-md-sections.txt` — the allowed `##` sections of `CLAUDE.md`, one heading per line.
   **Section sprawl is the main route to hub bloat**, so adding a section must touch the doc *and*
   this file. Edit it to match whatever headings you actually installed. Entries start with `## `;
   comments start with `# ` (one hash) — the two must not overlap, or the list parses empty.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
-  relay that to the user rather than forcing it.
+  relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
+  artifact drift, lint) go in `scripts/pre-commit.d/*.sh`, which the hook runs after the budget
+  check — never edit the hook or this installer to add one, because that is how the clobber marker
+  gets lost. A check that skips itself (missing venv, missing tool) must **say** it skipped; a
+  silently passing check reads as coverage.
 
 ### §B checks, and why each exists
 
@@ -571,11 +613,54 @@ git checkout docs/session-log.md
 The second one is the point of the whole unit-vs-total distinction: the file-level cap does **not**
 fire, and without the per-entry check the guard reports all-green while the briefing has doubled.
 
+**And the environment checks** — these catch a guard that judges the same commit differently in a
+hook than in your shell, or skips a section without saying so:
+
+```bash
+LC_ALL= LANG= bash scripts/check-docs-budget.sh | grep -E '문자 수|브리핑 출력'
+bash scripts/check-docs-budget.sh             | grep -E '문자 수|브리핑 출력'   # 두 값이 같아야 한다
+
+chmod -x scripts/session-brief.sh                          # 실행 비트만 빠진 설치
+bash scripts/check-docs-budget.sh | grep '브리핑 출력'      # 여전히 재야 한다 (건너뛰면 안 된다)
+chmod +x scripts/session-brief.sh
+```
+
 If `docs/decisions.md` has no index table, the script hard-fails by design — that table is what the
 session-start protocol reads, so its absence breaks the whole scheme.
 
 Finally, run `bash scripts/session-brief.sh` and read the output. It should be a few thousand
-characters, end at the index table (no `## D-` bodies), and print exactly one todo phase.
+characters, end at the index table (no `## D-` bodies, at most `DEC_ROWS` index rows), and print
+exactly one todo phase.
+
+## 3b. Existing projects — adopt without breaking them
+
+Skip this on a new repo. On an existing one the scaffold is the easy part. Three things break:
+
+1. **The guard goes red on install, and that is correct.** A pre-existing `CLAUDE.md` is almost
+   never a hub (one test repo: 133 lines, 7,017 chars, 12 sections → 4 HARDs). Blocking every
+   commit from that moment gets the guard removed. So **start in adoption mode**: put
+   `BUDGET_MODE=warn` in `scripts/docs-budget.conf`. The verdicts stay identical; only blocking
+   waits.
+2. **Formats differ, and an unrecognized format reads as green.** English headings
+   (`## Entry points`) and ADR-style decisions (`### ADR-001`) used to scan as "0 found, ok". The
+   guard now flags both ("진입점 절을 못 찾았다", "결정 형식을 인식하지 못했다"). Answer them in the conf
+   (`ENTRY_HEAD`, `DEC_ID`, `DEC_HEAD`) rather than renaming the repo's documents. An ADR repo
+   still needs an index table (`| ADR-001 | … |`); that one is a real gap, not a format question.
+3. **Migrate `CLAUDE.md` into a hub.** Per section: if it is a rule *source*, move it to
+   `docs/<topic>.md` and leave one pointer row in the location index; if it is history or a
+   rationale, it becomes a decision. Register the surviving `##` headings in
+   `claude-md-sections.txt` and add the contract line. Existing content is the user's, so **show
+   the move plan before moving anything.**
+
+Then rotate what is over cap (§4 of the policy), and once the guard is all green **flip
+`BUDGET_MODE=block` and record it as a decision.** Without the flip, adoption mode becomes permanent
+and the guard becomes decoration.
+
+**Upgrading an older install of this skill** is `context-budget-audit`'s job, but the installer
+handles its half. A hook from an older version (header `# 자동 생성: scripts/install-hooks.sh`, no
+marker) is recognized as its own. If that hook carries extra project checks, the installer refuses
+and prints exactly the lines that would be lost; move them to `scripts/pre-commit.d/*.sh`, then
+run `bash scripts/install-hooks.sh --migrated`. The old hook is kept as `pre-commit.legacy.bak`.
 
 ## 4. Report and offer the follow-up
 

@@ -16,9 +16,15 @@
 set -uo pipefail
 
 SESS_ENTRIES=3     # session-log 에서 펼칠 최근 항목 수 (CLAUDE.md 와 같은 값)
+DEC_ROWS=25        # decisions 인덱스에서 펼칠 최근 행 수 — 이 절만 O(결정 수) 였다
 GIT_LOG=10
+DEC_ID='D-[0-9]{3}'; DEC_HEAD='## '   # 결정 형식 — check-docs-budget.sh 와 같은 값
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "git 저장소가 아니다" >&2; exit 1; }
+# 프로젝트별 값(SESS_ENTRIES·DEC_ROWS·형식)은 가드와 같은 설정 파일에서 읽는다
+# shellcheck disable=SC1091
+[ -f "$ROOT/scripts/docs-budget.conf" ] && . "$ROOT/scripts/docs-budget.conf"
+DEC_BODY_RE="^${DEC_HEAD}${DEC_ID}"; DEC_ROW_RE="^[|] *${DEC_ID}"
 cd "$ROOT" || exit 1
 
 if [ -t 1 ]; then BLD=$'\033[1m'; DIM=$'\033[2m'; OFF=$'\033[0m'; else BLD=; DIM=; OFF=; fi
@@ -44,14 +50,38 @@ if [ -f docs/session-log.md ]; then
     "$DIM" "$((total - SESS_ENTRIES))" "$OFF"
 else miss docs/session-log.md; fi
 
-# ── 3. decisions.md — 첫 결정 본문 앞까지. 곧 머리말 + 인덱스 표다 ────────────
+# ── 3. decisions.md — 머리말 + 인덱스 표의 **최근 DEC_ROWS 행**까지 ──────────
 #     본문은 결정당 ~23줄씩 늘어난다. 여기서 자르지 않으면 이 절이 브리핑을 삼킨다.
-sec "docs/decisions.md" "인덱스 표만 (본문은 필요한 D-번호만 펼친다)"
+#     인덱스도 자른다: 표 전체를 싣던 동안 이 절만 O(결정 수)로 커졌고(어느 저장소: 54개 = 4,538자
+#     = 브리핑의 32%), 결정이 하나 늘 때마다 브리핑이 ~80자씩 밀려 10세션마다 예산을 넘겼다.
+#     접는 쪽은 **가장 오래된** 행이다 — 오래된 결정은 대개 current-task 가 번호와 함께 이미
+#     되짚고 있고, 표는 파일에 그대로 남아 grep 한 번이면 펼쳐진다 (아카이브가 아니다).
+sec "docs/decisions.md" "인덱스 표 최근 ${DEC_ROWS}행 (본문·그 앞 행은 필요할 때 펼친다)"
 if [ -f docs/decisions.md ]; then
-  awk '/^## D-[0-9]{3}/ { exit } { print }' docs/decisions.md
-  nd=$(grep -cE '^## D-[0-9]{3}' docs/decisions.md 2>/dev/null) || nd=0
-  printf '%s… 본문 %d개는 펼치지 않았다. 예: sed -n "/^## D-017/,/^## D-016/p" docs/decisions.md%s\n' \
-    "$DIM" "$nd" "$OFF"
+  awk -v n="$DEC_ROWS" -v dim="$DIM" -v off="$OFF" -v bre="$DEC_BODY_RE" -v rre="$DEC_ROW_RE" -v idre="$DEC_ID" '
+    function foldline() {
+      if (folded > 0 && !said) {
+        printf "%s… 그 앞 %d행(%s~%s)은 접었다. 표는 파일에 있다: grep \"^| D-\" docs/decisions.md%s\n",
+               dim, folded, hi, lo, off
+        said = 1
+      }
+    }
+    $0 ~ bre { foldline(); exit }
+    $0 ~ rre {
+      rows++
+      if (rows <= n) { print; next }
+      match($0, idre); id = substr($0, RSTART, RLENGTH)
+      if (folded == 0) hi = id
+      lo = id; folded++
+      next
+    }
+    { foldline(); print }
+    END { foldline() }
+  ' docs/decisions.md
+  nd=$(grep -cE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null) || nd=0
+  first=$(grep -oE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null | head -1 | grep -oE "$DEC_ID") || first=""
+  printf '%s… 본문 %d개는 펼치지 않았다. 예: sed -n "/^%s%s/,/^%s/p" docs/decisions.md%s\n' \
+    "$DIM" "$nd" "$DEC_HEAD" "${first:-<ID>}" "$DEC_HEAD" "$OFF"
 else miss docs/decisions.md; fi
 
 # ── 4. todo.md — ★ 표시된 Phase 만 ──────────────────────────────────────────
