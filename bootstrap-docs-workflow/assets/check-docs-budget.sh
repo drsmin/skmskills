@@ -42,6 +42,11 @@ REFDOC_NOTE=700                      # 참조 문서 분할 권고선 (캡 아�
 # 세션 브리핑(scripts/session-brief.sh) 출력 = 매 세션 실제로 읽는 양. 캡들이 전부 초록인 채로
 # 이 값이 커질 수 있으므로 따로 잰다. 커지면 브리핑에 들어가는 *조각*을 줄인다.
 BRIEF_SOFT=14000; BRIEF_HARD=20000
+# 압축판(SessionStart 훅이 주입하는 판). **하네스가 10,000자에서 자르고, 넘으면 본문을
+# 파일로 빼면서 「읽으라」고 하지 않는다** ⇒ 브리핑이 통째로 없는 세션이 된다.
+# ⚠️ **HARD 를 10,000 이상으로 올리지 말 것** — 올려도 하네스가 이긴다(훅이 그걸 코드로 고정한다).
+#    좁힐 곳은 docs-budget.conf 의 `*_COMPACT` 창이다.
+BRIEF_COMPACT_SOFT=8000; BRIEF_COMPACT_HARD=9500
 # 그 "조각" 들도 문자로 잰다. 위의 조각 캡들은 전부 **줄 수**인데 브리핑은 **문자**로
 # 재므로, 줄은 그대로인 채 한 줄이 두 배가 되면 아무도 빨개지지 않는다 — §2.2 가 CLAUDE.md 에서
 # 막은 실패가 브리핑 조각에서 반복됐다(어느 저장소: current-task 37줄 = 3,831자 · 줄당 103자).
@@ -384,7 +389,7 @@ if [ -s "$DEC_SRC" ]; then
     dec_gated=$(printf '%s\n' "$_dl" | sed -n 2p)
     [ -n "$dec_gated" ] || dec_gated=0
     # 헤드룸은 **집행 대상**을 잰다 — 과거 최댓값으로 재면 「98%」가 영원히 떠 있고
-    # 그 숫자를 내리려고 캡을 올리게 된다 — 캡 올리기 금지의 반대 방향이다.
+    # 그 숫자를 내리려고 캡을 올리게 된다(캡 올리기 금지의 반대 방향).
     if [ "${DECBODY_FROM:-0}" -gt 0 ]; then
       _hr_record "  └ 결정당 본문" "$dec_gated" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
       # 집행 대상이 아직 없으면(새 결정 0개) 비율은 0% 이고 그게 맞다 — 과거 숫자를 쓰면
@@ -511,6 +516,25 @@ if [ -f scripts/session-brief.sh ]; then
   brief_chars=$(printf '%s\n' "$brief_out" | _chars)
   check "세션 브리핑 출력" "${brief_chars:-0}" "$BRIEF_SOFT" "$BRIEF_HARD" "자" \
     "아래 조각 중 빨간/노란 것을 줄인다 (인덱스가 잔차다 — 결정이 늘면 나머지를 줄인다)"
+
+  # 압축판 — **실제로 자동 주입되는 양**이다. 전체판이 초록이어도 이쪽이 캡을 넘으면
+  # 주입이 조용히 사라지므로 따로 잰다(두 판은 창이 다르다).
+  brief_c_out=$(bash scripts/session-brief.sh --compact 2>/dev/null)
+  brief_c_chars=$(printf '%s\n' "$brief_c_out" | _chars)
+  check "  └ 압축판(주입분)" "${brief_c_chars:-0}" "$BRIEF_COMPACT_SOFT" "$BRIEF_COMPACT_HARD" "자" \
+    "docs-budget.conf 의 *_COMPACT 창을 좁힌다 — ⚠️ 캡을 올려도 하네스가 10,000자에서 자른다"
+  # 조각이 **빠지지 않았는지**도 본다. 크기만 재면 「조각 하나가 통째로 없어서 작아진 것」이
+  # 초록으로 보인다 — 이 파일이 가장 경계하는 "통과처럼 보이는 실패"다.
+  c_missing=''
+  for _piece in current-task session-log decisions.md todo.md; do
+    printf '%s\n' "$brief_c_out" | grep -q "━━.*$_piece" || c_missing="$c_missing $_piece"
+  done
+  if [ -n "$c_missing" ]; then
+    bad "   └ 압축판 조각 누락:$c_missing" \
+      "압축판에서 조각이 빠졌다:$c_missing — session-brief.sh --compact 가 조각을 지웠다. 창을 좁히는 것과 조각을 빼는 것은 다르다"
+  else
+    good "   └ 압축판 조각 4종 ${DIM}(창만 좁혔다 — 조각을 빼지 않았다)${OFF}"
+  fi
 
   p_cur=$(_brief_piece "$brief_out" 'current-task')
   p_ses=$(_brief_piece "$brief_out" 'session-log')

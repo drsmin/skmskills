@@ -597,27 +597,41 @@ cp "<skill base dir>/assets/session-rereads.py"     scripts/   # 재독분 실�
 mkdir -p scripts/hooks docs/decisions                             # 새 저장소는 처음부터 split
 cp "<skill base dir>/assets/hooks/pre-commit-test.sh" scripts/hooks/   # 커밋 전 테스트 강제 (§7)
 cp "<skill base dir>/assets/hooks/pre-read-size.sh"   scripts/hooks/   # 큰 파일 Read 차단 (§7)
+cp "<skill base dir>/assets/hooks/session-start-brief.sh" scripts/hooks/  # 브리핑 자동 주입 (§1)
 chmod +x scripts/*.sh scripts/hooks/*.sh
 bash scripts/install-hooks.sh
 ```
 
-**`scripts/hooks/` 둘은 `.git/hooks` 가 아니라 `.claude/settings.json` 에 붙는다** — 그래서
+**`scripts/hooks/` 셋은 `.git/hooks` 가 아니라 `.claude/settings.json` 에 붙는다** — 그래서
 클론마다 사람이 설정할 필요가 없다(`install-hooks.sh` 가 다루는 pre-commit 예산 가드와 다른 경로다).
-설치는 그 파일에 `PreToolUse` 항목 둘을 넣는 것이고, 러너·PATH 는 **conf** 에서 읽는다
-(`TEST_CMD`·`TEST_PATH` — 스크립트에 박으면 다음 갱신에 사라진다):
+러너·PATH 는 **conf** 에서 읽는다(`TEST_CMD`·`TEST_PATH` — 스크립트에 박으면 다음 갱신에 사라진다):
 
 ```jsonc
 // .claude/settings.json
-{"hooks":{"PreToolUse":[
+{"hooks":{
+ "SessionStart":[
+  {"matcher":"startup|clear|compact|resume|fork","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/session-start-brief.sh\"","timeout":30}]}],
+ "PreToolUse":[
   {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pre-commit-test.sh\"","timeout":300}]},
-  {"matcher":"Read","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pre-read-size.sh\"","timeout":10}]}
-]}}
+  {"matcher":"Read","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pre-read-size.sh\"","timeout":10}]}]
+}}
 ```
 
-⚠️ **설치한 뒤 네 경로를 되돌려 확인한다**(둘 다 조용히 안 도는 실패 모양이 있다): 큰 이미지가
-막히는지 · 범위 지정(`offset`/`limit`)이 통과하는지 · 테스트 실패가 커밋을 막는지 · 러너가 없을 때
-**통과하지 않고 막는지**. 훅이 실제로 돌았는지는 `tail -3 .git/pre-commit-test.log` 로 본다 —
-⚠️ **커밋에 걸린 시간으로 판단하지 말 것**(훅은 도구 호출 **전에** 돈다).
+**왜 `SessionStart` 가 필요한가**: 「브리핑 한 번이 세션 시작 읽기의 전부다」라고 적어 둔 **뒤에도**
+읽는 쪽이 `head -120` 으로 잘랐다 — 어느 저장소 실측에서 **10세션 중 2세션이 네 조각 중 셋을 아예
+못 봤다**. 부르는 명령이면 자를 수 있고, 주입이면 자를 자리가 없다. 훅은 `--compact` 판을 넣는다.
+
+⚠️ **주입분 캡 10,000자는 하네스 것이다** — 넘으면 본문을 파일로 빼고 **「읽으라」고 하지 않는다**
+(= 브리핑 없는 세션). `BRIEF_COMPACT_HARD` 를 **올려도 하네스가 이긴다**(훅이 코드로 고정한다).
+좁힐 곳은 conf 의 `*_COMPACT` 창이다. ⚠️ **조각을 빼서 줄이지 말 것** — 가드가 조각 4종의 **존재**를
+따로 본다(조각 하나를 지운 판은 **더 작아져 초록**이었다).
+
+⚠️ **설치한 뒤 되돌려 확인한다**(전부 조용히 안 도는 실패 모양이 있다): 큰 이미지가 막히는지 ·
+범위 지정(`offset`/`limit`)이 통과하는지 · 테스트 실패가 커밋을 막는지 · 러너가 없을 때 **통과하지
+않고 막는지** · 훅이 **유효한 JSON 하나만** 내는지(`| python3 -m json.tool`) · 브리핑이 **없거나
+비거나 캡을 넘을 때** 그 사실을 적어 보내는지. 훅이 실제로 돌았는지는 `tail -3
+.git/pre-commit-test.log` 로 본다 — ⚠️ **커밋에 걸린 시간으로 판단하지 말 것**(훅은 도구 호출
+**전에** 돈다). ⚠️ **「훅이 JSON 을 냈다」를 「주입됐다」로 읽지 말 것** — 주입은 다음 세션에서 본다.
 
 - `session-brief.sh` — **the first line of defence, and the reason the protocol holds.** It cuts
   each file to its session-start range and prints them as one briefing; `CLAUDE.md` points at this
