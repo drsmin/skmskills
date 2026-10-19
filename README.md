@@ -31,6 +31,7 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   ⭐ **결정은 하나 = 파일 하나**(`docs/decisions/D-NNN.md`, 인덱스는 `docs/decisions.md`). 한 파일이면
   세션 시작은 막아도 결정을 고칠 때마다 파일 전체가 읽힌다(결정 하나 1.3k자 vs 파일 47k자). 가드·브리핑은
   `docs/decisions/` 가 있으면 알아서 split 으로 돌고, 기존 저장소는 `assets/split-decisions.sh` 로 옮긴다.
+  회전(session-log 월별 아카이브 · 끝난 todo Phase)은 `assets/rotate-docs.sh` 가 한다 — 전후 내용이 같을 때만 쓴다.
 
 - **context-budget-audit** — 위의 반대쪽. **이미 깔린** 문서 규율이 실제로 O(1) 인지 재고
   개보수한다. "가이드/규칙에서 토큰이 어디서 낭비되나" 류의 질문에 쓴다. 추정 대신 재는 명령,

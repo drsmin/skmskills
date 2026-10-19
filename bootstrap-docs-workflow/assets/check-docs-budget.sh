@@ -248,9 +248,9 @@ fi
 
 # ── §A-3 session-log.md — 최근 N개만 읽지만 회전 트리거 ─────────────────────
 check "docs/session-log.md" "$(_lines docs/session-log.md)" "$SESSLOG_SOFT" "$SESSLOG_HARD" "줄" \
-  "오래된 항목을 docs/archive/session-log-YYYY-MM.md 로 회전"
+  "오래된 항목을 docs/archive/session-log-YYYY-MM.md 로 회전 — bash scripts/rotate-docs.sh"
 check "  └ 항목 개수" "$(_count docs/session-log.md '^## ')" "$SESSENT_SOFT" "$SESSENT_HARD" "개" \
-  "최근 ${SESSENT_SOFT}개만 남기고 회전 (context-budget.md §4)"
+  "회전한다 — bash scripts/rotate-docs.sh (context-budget.md §4)"
 
 # 항목당 본문 길이 — **이것이 실제 세션 시작 비용이다.** 위 두 검사(총 줄 수·항목 개수)는
 # 회전 트리거일 뿐 브리핑 크기와 무관하다. 긴 항목 하나가 브리핑을 삼키는 것을 막는다.
@@ -303,7 +303,7 @@ fi
 
 # ── §A-4 todo.md ───────────────────────────────────────────────────────────
 check "docs/todo.md" "$(_lines docs/todo.md)" "$TODO_SOFT" "$TODO_HARD" "줄" \
-  "완료된 Phase 를 docs/archive/todo-done.md 로 회전"
+  "완료된 Phase 를 docs/archive/todo-done.md 로 회전 — bash scripts/rotate-docs.sh (미완은 먼저 이월)"
 
 # ★ 마커 — scripts/session-brief.sh 가 이걸로 "현재 Phase" 를 찾는다. 없으면 브리핑이
 # Phase 목록만 뱉거나(정보 손실) 읽는 쪽이 파일 전체를 열게 된다. 읽기 프로토콜의 일부다.

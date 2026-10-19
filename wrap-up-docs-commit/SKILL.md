@@ -52,9 +52,12 @@ Keep entries scannable. Do **not** record secrets.
 A project with `docs/context-budget.md` also has `scripts/check-docs-budget.sh` wired to a pre-commit
 hook, so an over-cap file will **block the commit** in §3. Don't reach for `--no-verify` — that just
 defers the same work to a session with less context on it. Run the check first and rotate what it
-names (procedure in `docs/context-budget.md` §4; typically: move the oldest `session-log.md` entries
-to `docs/archive/session-log-YYYY-MM.md`, completed phases to `docs/archive/todo-done.md`, and leave a
-one-line pointer behind). Rotation is a move, not a delete — the history stays in git and searchable,
+names (procedure in `docs/context-budget.md` §4). If `scripts/rotate-docs.sh` exists, use it —
+`bash scripts/rotate-docs.sh --dry-run`, then without the flag, then the formatter. It files old
+`session-log.md` entries into `docs/archive/session-log-YYYY-MM.md` by date and moves all-`[x]` phases
+to `docs/archive/todo-done.md`, leaving pointers; it refuses rather than guess. Phases it lists as
+mixed need their unfinished items carried over to another phase first (that is your call, not the
+script's). Without the script, do the same moves by hand. Rotation is a move, not a delete — the history stays in git and searchable,
 it just stops costing every future session.
 
 Decisions are the exception: **compress, never rotate.** Losing the reasoning makes the next

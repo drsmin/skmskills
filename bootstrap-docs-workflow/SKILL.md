@@ -380,16 +380,22 @@ grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 
 `docs/archive/` 로 옮긴다. 아카이브는 **기본적으로 읽지 않는** 영역이지만 git 에 남아
 검색·복구가 가능하다.
 
+`bash scripts/rotate-docs.sh` 가 아래 두 회전을 한다(`--dry-run` 으로 먼저 본다). 회전 전후 내용
+줄이 한 줄이라도 다르면 아무것도 바꾸지 않고 멈춘다. 손으로 하면 포인터 누락·순서 뒤집힘이 잦았다.
+
 ### session-log 회전
-1. 최근 **12개 항목**만 `docs/session-log.md` 에 남긴다.
-2. 나머지를 `docs/archive/session-log-YYYY-MM.md` 로 이동 (월별, 최신이 위 순서 유지).
+1. 최근 **`SESS_KEEP`(기본 6)개 항목**만 `docs/session-log.md` 에 남긴다. 권고선(12개)보다 낮게
+   남겨야 다음 회전까지 여유가 생긴다 — 12개로 자르면 다음 세션에 또 경고가 뜬다.
+2. 나머지는 항목 헤딩의 날짜(`## YYYY-MM-DD …`)로 `docs/archive/session-log-YYYY-MM.md` **맨 위**에
+   끼운다(최신이 위 순서 유지). 날짜를 못 읽는 항목이 있으면 스크립트는 거부한다.
 3. `docs/session-log.md` 하단에 한 줄만 남긴다: `> 이전 이력: docs/archive/session-log-YYYY-MM.md`
 
 ### todo 회전
 1. **먼저 남은 미완 항목을 갈 Phase 로 이월시킨다** (`(3주차에서 이월)` 처럼 출처를 적는다).
-   "전 항목 `[x]`" 가 되기를 기다리면 미완 하나 때문에 **영원히 회전하지 않는다.**
-2. 그 다음 완료된 Phase 를 `docs/archive/todo-done.md` 로 이동하고, `docs/todo.md` 에는
-   `## Phase N. <제목> — 완료 (archive/todo-done.md)` 한 줄만 남긴다.
+   "전 항목 `[x]`" 가 되기를 기다리면 미완 하나 때문에 **영원히 회전하지 않는다.** 이월은 판단이라
+   스크립트가 하지 않는다 — 미완이 섞인 Phase 를 찍어 줄 뿐이다.
+2. 그 다음 스크립트가 항목이 전부 `[x]` 이고 `★` 가 없는 Phase 를 `docs/archive/todo-done.md` 로
+   옮기고, `docs/todo.md` 에는 `## Phase N. <제목> — 완료 (docs/archive/todo-done.md)` 한 줄을 남긴다.
 3. `★` 마커를 새 현재 Phase 로 옮긴다.
 
 ### 리포트·발표본 회전
@@ -542,6 +548,7 @@ cp "<skill base dir>/assets/install-hooks.sh"       scripts/
 cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
 cp "<skill base dir>/assets/docs-budget.conf.example" scripts/   # 프로젝트별 값은 여기로
 cp "<skill base dir>/assets/split-decisions.sh"     scripts/   # 한 파일 결정 기록 → 하나씩 (기존 저장소용)
+cp "<skill base dir>/assets/rotate-docs.sh"         scripts/   # session-log · todo 회전
 mkdir -p docs/decisions                                           # 새 저장소는 처음부터 split
 chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
@@ -582,6 +589,12 @@ bash scripts/install-hooks.sh
   from the headings if there is none (newest on top). `--dry-run` shows the plan; it refuses on an
   already-split repo, duplicate IDs, or an unrecognized format, and writes nothing unless every body
   came out. A new repo doesn't need it — create `docs/decisions/` from the start.
+- `rotate-docs.sh` — does the rotation the guard asks for (policy §4): keeps the newest `SESS_KEEP`
+  (default 6) log entries and files the rest by heading date into `docs/archive/session-log-YYYY-MM.md`
+  (newest on top, one pointer line left behind); moves todo phases that are all `[x]` and carry no
+  `★` to `docs/archive/todo-done.md`. It never carries over unfinished items — that is a judgement —
+  it lists the mixed phases instead. `--dry-run` first; it writes nothing unless the content lines
+  before and after match exactly, and refuses an entry whose heading has no date.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
   relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
