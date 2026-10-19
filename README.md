@@ -49,6 +49,13 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   base 가 개선될 때 스킬이 조용히 낡는 것을 막는다.
   기본 base: `github.com/drsmin/drs-webapp-base` (다른 base 를 줘도 된다)
 
+- **remote-control-service** — 프로젝트의 `claude remote-control` 을 **systemd 사용자 서비스**로
+  상시 띄운다(tmux 안에서, 로그아웃·재부팅 후에도). 템플릿 유닛 `claude-rc@<프로젝트>` 하나에
+  `~/projects/<프로젝트>` 하나. 추가·제거(비활성화)·재시작·목록·화면 붙기를 `assets/claude-rc.sh`
+  로만 한다 — 손으로 치다 `claude-rc@@x`(@ 두 개 → 다른 인스턴스) 같은 사고가 실제로 났다.
+  에이전트 셸에서 `systemctl --user` 가 `No medium found` 로 죽는 문제(`XDG_RUNTIME_DIR`)도 스크립트가 처리.
+  linger(`sudo loginctl enable-linger`)는 사용자가 직접 켠다.
+
 **`new-webapp-project` 를 뺀 나머지**는 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤
 프로젝트에서도 쓸 수 있다. `bootstrap-docs-workflow`(기록 규율) → `bootstrap-screen-manual`
 (사용 설명서) → `wrap-up-docs-commit`(마무리) 순으로 물리고, `context-budget-audit` 은

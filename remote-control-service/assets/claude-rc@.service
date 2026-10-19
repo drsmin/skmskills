@@ -1,0 +1,13 @@
+[Unit]
+Description=Claude Code Remote Control (%i)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do getent hosts api.anthropic.com >/dev/null 2>&1 && exit 0; sleep 2; done; exit 0'
+ExecStart=/usr/bin/tmux -L rc-%i new-session -d -s main -c %h/projects/%i '%h/.local/bin/claude remote-control --name "%i" --remote-control-session-name-prefix "%i"'
+ExecStop=-/usr/bin/tmux -L rc-%i kill-server
+
+[Install]
+WantedBy=default.target
