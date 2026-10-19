@@ -32,6 +32,11 @@ TODO_SOFT=120;    TODO_HARD=200
 # decisions.md 는 총 줄 수로 재지 않는다. 결정은 계속 늘고, 세션 시작에 읽는 건
 # 인덱스 표뿐이라(§1) 총합은 애초에 세션 비용이 아니다. 대신 **결정 하나의 본문 길이**를 잰다.
 DECBODY_SOFT=20;  DECBODY_HARD=30    # §5 의 "본문 20줄 이내" 를 결정별로 강제
+# 지난 결정은 고치지 않는다(그때의 근거다) ⇒ hard 를 과거 최댓값에 맞추면 **새 결정은 아무것도
+# 막히지 않는다**(장식이 된 가드). 그래서 hard 는 **이 번호 이상**에만 적용한다 — 과거는 soft 로
+# 남아 보이고, 새 결정만 차단된다. 0 = 전부에 적용(기존 동작).
+# ⚠️ **이 값을 올려서 긴 새 결정을 통과시키지 말 것** — 그러면 다시 장식이 된다.
+DECBODY_FROM=0
 DEC_OVERHEAD=4                       # 헤딩 + 빈 줄 + 구분선 — 총합 상한을 결정 수에서 유도한다
 REFDOC_NOTE=700                      # 참조 문서 분할 권고선 (캡 아님)
 # 세션 브리핑(scripts/session-brief.sh) 출력 = 매 세션 실제로 읽는 양. 캡들이 전부 초록인 채로
@@ -354,22 +359,45 @@ if [ -s "$DEC_SRC" ]; then
       }
       END { if (last > m) m = last; print m+0 }
     ' "$DEC_SRC")
-    _hr_record "  └ 결정당 본문" "$dec_max" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
-    # 결정별 본문 길이 — 앞뒤 빈 줄과 구분선을 뺀 실제 내용
-    long=$(awk -v re="$DEC_BODY_RE" -v idre="$DEC_ID" '
-      $0 ~ re { if (id != "") emit(); match($0, idre); id = substr($0, RSTART, RLENGTH); n = 0; last = 0; seen = 0; next }
-      id != "" {
-        if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
-        if (!seen) { n = 0; seen = 1 }
-        n++; last = n
-      }
-      END { if (id != "") emit() }
-      function emit() { if (last > LIM) printf "%s(%d) ", id, last }
-    ' LIM="$DECBODY_SOFT" "$DEC_SRC")
+    # 결정별 본문 길이 — 앞뒤 빈 줄과 구분선을 뺀 실제 내용.
+    # LIM 초과를 나열하고, FROM 이상(= hard 적용 대상)의 **최댓값**을 둘째 줄에 낸다.
+    _dec_long() {   # <LIM> → "목록\n대상최댓값"
+      awk -v re="$DEC_BODY_RE" -v idre="$DEC_ID" -v LIM="$1" -v FROM="${DECBODY_FROM:-0}" '
+        $0 ~ re { if (id != "") emit(); match($0, idre); id = substr($0, RSTART, RLENGTH); n = 0; last = 0; seen = 0; next }
+        id != "" {
+          if ($0 ~ /^[[:space:]]*$/ || $0 == "---") { n++; next }
+          if (!seen) { n = 0; seen = 1 }
+          n++; last = n
+        }
+        END { if (id != "") emit(); printf "\n%d\n", gmax + 0 }
+        function emit() {
+          if (last > LIM) printf "%s(%d) ", id, last
+          # hard 적용 대상의 최댓값 — ID 의 숫자만 떼어 FROM 과 견준다
+          num = id; gsub(/[^0-9]/, "", num)
+          if (FROM > 0 && num + 0 < FROM) return
+          if (last > gmax) gmax = last
+        }
+      ' "$DEC_SRC"
+    }
+    _dl=$(_dec_long "$DECBODY_SOFT")
+    long=$(printf '%s\n' "$_dl" | sed -n 1p)
+    dec_gated=$(printf '%s\n' "$_dl" | sed -n 2p)
+    [ -n "$dec_gated" ] || dec_gated=0
+    # 헤드룸은 **집행 대상**을 잰다 — 과거 최댓값으로 재면 「98%」가 영원히 떠 있고
+    # 그 숫자를 내리려고 캡을 올리게 된다 — 캡 올리기 금지의 반대 방향이다.
+    if [ "${DECBODY_FROM:-0}" -gt 0 ]; then
+      _hr_record "  └ 결정당 본문" "$dec_gated" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
+      # 집행 대상이 아직 없으면(새 결정 0개) 비율은 0% 이고 그게 맞다 — 과거 숫자를 쓰면
+      # 「98%」가 영원히 떠 있고 그 숫자를 내리려고 캡을 올리게 된다.
+      HR_NOTE="$HR_NOTE · D-$(printf '%03d' "$DECBODY_FROM") 이상만 집행(과거 최대 ${dec_max}줄)"
+    else
+      _hr_record "  └ 결정당 본문" "$dec_max" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
+    fi
     if [ -n "$long" ]; then
       # 판정은 최댓값 하나로 한다 — 같은 계산을 두 벌 두면 한쪽만 고치게 된다.
-      if [ "$dec_max" -gt "$DECBODY_HARD" ]; then
-        printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "최대 ${dec_max}줄 · ${DECBODY_HARD}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
+      # 단 hard 는 **DECBODY_FROM 이상**의 최댓값으로 본다(지난 결정은 고치지 않으므로 soft 로 남는다).
+      if [ "$dec_gated" -gt "$DECBODY_HARD" ]; then
+        printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "집행 대상 최대 ${dec_gated}줄 · ${DECBODY_HARD}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
         ACTIONS+=("${RED}[HARD]${OFF} $DEC_WHERE → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
         fail=1
       else

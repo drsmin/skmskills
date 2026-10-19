@@ -792,6 +792,22 @@ Then rotate what is over cap (§4 of the policy), and once the guard is all gree
 `BUDGET_MODE=block` and record it as a decision.** Without the flip, adoption mode becomes permanent
 and the guard becomes decoration.
 
+**Flipping is not enough on its own — check what the hard caps still enforce.** Where a repo's
+own rule says *past records are never rewritten* (decisions, shipped session entries), the past
+cannot be compressed, so the hard cap ends up pinned to the largest thing in history. One repo
+flipped to `block` with the decision cap at 260 lines while its longest past decision was 256:
+green, blocking, and a brand-new 250-line decision would have sailed through. The fix is not a
+tighter cap but **a split between what is enforced and what is merely shown**: set
+`DECBODY_FROM=<next number>` so the hard cap applies only from there on; the past stays visible as
+soft. Make the headroom table measure the enforced set too — if it reports the historical maximum,
+"98%" sits there forever and the only way to make that number fall is to raise the cap.
+Axes that rotate (session entries, todo) need none of this: rotation removes the past, so pinning
+hard to the post-rotation reality *is* enforcement for new entries.
+⚠️ Never bump `DECBODY_FROM` to excuse "just this one" — that one becomes the next baseline.
+⚠️ Verify both directions at the boundary: one line over must block, exactly at the cap must pass,
+and the historical maximum must stay soft. Then confirm `git commit` itself is refused — a guard's
+own exit code is only half the path.
+
 **Upgrading an older install of this skill** is `context-budget-audit`'s job, but the installer
 handles its half. A hook from an older version (header `# 자동 생성: scripts/install-hooks.sh`, no
 marker) is recognized as its own. If that hook carries extra project checks, the installer refuses
