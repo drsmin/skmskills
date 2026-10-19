@@ -9,8 +9,8 @@ description: Use when asked where a project's guides, rules, CLAUDE.md, or docs 
 — *이미 있는* 설치가 실제로 O(1) 인지 재고, 아니면 개보수한다. 오래된 설치는 읽기 프로토콜이
 산문으로만 있어 거의 항상 새고 있다.
 
-`bootstrap-docs-workflow/assets/` 에 `session-brief.sh` 와 갱신된 `check-docs-budget.sh` 가
-파일로 있다. **재타이핑하지 말고 거기서 복사한다** — 인라인으로 옮겨 적으면 조용히 드리프트한다.
+`bootstrap-docs-workflow/assets/` 에 `session-brief.sh`·갱신된 `check-docs-budget.sh`·
+`split-decisions.sh` 가 파일로 있다. **재타이핑하지 말고 거기서 복사한다** — 인라인으로 옮겨 적으면 조용히 드리프트한다.
 
 `CLAUDE.md` 가 "이 파일들을 읽어라"라고 지시하면, **세션 시작 비용이 프로젝트 이력 길이에
 비례해 커진다.** `session-log` 는 세션마다 쌓이고 `decisions` 는 번호가 늘고 `todo` 는 완료
@@ -69,6 +69,7 @@ sed -n '1,46p' docs/decisions.md | chars ;  chars < docs/decisions.md
 # 세션 시작에 읽는 조각별 크기
 awk '/^## /{if(h)print len" "h; h=$0; len=0; next} h{len++}' docs/session-log.md   # 항목당 줄 수
 grep -c '^## D-' docs/decisions.md                                                 # 증가 속도의 분자
+sed -n '/^## D-042/,/^## D-043/p' docs/decisions.md | chars                        # 결정 하나 vs 파일 전체 (작업 중 비용)
 wc -c docs/*.md docs/**/*.md | sort -n                                             # 검색 노이즈
 ```
 
@@ -89,6 +90,7 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
 | 프로젝트가 훅을 직접 고침 | 덮어쓰기 보호 마커가 사라짐 | `scripts/pre-commit.d/*.sh` 로 |
 | 형식을 못 알아보는 가드 | 영어 진입점·ADR 결정이 "0건 ok" | conf 의 `ENTRY_HEAD`·`DEC_ID` |
 | 스크립트에 박힌 커스텀 | 가드를 갱신하면 캡·목록이 되돌아감 | `scripts/docs-budget.conf` 로 |
+| 결정이 한 파일에 쌓임 | 결정 하나를 고쳐도 파일 전체가 읽힘 (작업 중 비용) | `split-decisions.sh` (§5) |
 
 ## §3. 재야 할 것은 파일이 아니라 브리핑이다
 
@@ -136,9 +138,14 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
   생성물(`.pptx`/`.docx` 등)까지 함께 회전한다. 세션 시작에 안 읽어도 `grep -r docs/` 가
   매번 n중으로 걸린다. 아카이브된 판은 *그때의 기록*이므로 오늘의 값과 대조하는 테스트
   목록에서도 뺀다.
-- **decisions 는 회전하지 않는다 — 압축한다.** 결정은 지금 코드가 왜 이런지의 유일한 근거다.
-  밀어내면 다음 세션이 같은 논쟁을 반복한다. 번호는 재사용하지 않고, 뒤집힌 결정은 지우지
-  않고 상태만 `폐기(→D-0NN)` 로 바꾼다.
+- **decisions 는 회전하지 않는다 — 압축하고, 하나씩 쪼갠다.** 결정은 지금 코드가 왜 이런지의
+  유일한 근거다. 밀어내면 다음 세션이 같은 논쟁을 반복한다. 번호는 재사용하지 않고, 뒤집힌
+  결정은 지우지 않고 상태만 `폐기(→D-0NN)` 로 바꾼다.
+- **결정이 한 파일이면 쪼갠다** (`docs/decisions/<ID>.md`). 세션 시작은 브리핑이 인덱스만 실어
+  막지만, 결정을 고칠 때마다 편집 도구가 파일 전체를 읽는다 — **작업 중 비용**이 결정 수에
+  비례한다(실측: 결정 하나 1.3k자 vs 파일 47k자 = 35배). 가드는 이 비용을 재지 않으므로
+  초록이어도 쪼갠다. `bash scripts/split-decisions.sh --dry-run` → 실행. 인덱스는
+  `decisions.md` 에 남고 가드·브리핑은 `docs/decisions/` 를 보고 알아서 split 으로 돈다.
 
 ## §6. 자동 로드 파일은 따로 방어한다
 
@@ -160,7 +167,7 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
    `scripts/docs-budget.conf`(예시: `assets/docs-budget.conf.example`)로, 훅에 덧붙인 검사는
    `scripts/pre-commit.d/*.sh` 로 옮긴다. 그냥 복사하면 그 커스텀이 **말없이 사라진다**(실제로
    그림 드리프트 검사가 빠졌다). 옮긴 뒤에 `session-brief.sh`·`check-docs-budget.sh`·
-   `install-hooks.sh` 를 복사하고 `bash scripts/install-hooks.sh` 를 돌린다 — 예전 훅에 덧붙은
+   `install-hooks.sh`·`split-decisions.sh` 를 복사하고 `bash scripts/install-hooks.sh` 를 돌린다 — 예전 훅에 덧붙은
    검사가 남아 있으면 설치기가 거부하며 그 줄을 찍는다. 옮겼으면 `--migrated` 로 다시 돌린다.
    문서 형식이 다르면(영어 헤딩·ADR) 가드가 "인식하지 못했다"로 알린다 — conf 의
    `ENTRY_HEAD`·`DEC_ID`·`DEC_HEAD` 로 맞춘다. 실행해 출력 크기를 확인한다.
@@ -168,9 +175,11 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
 4. `todo.md` 의 진행 중인 Phase 헤딩에 `★` 를 붙인다. 새 검사가 **실제로 발동하는지** 확인한다
    — 마커를 떼 보고 hard 로 막히는지, 로그 항목 하나를 40줄로 불려 보고 총 줄 수는 초록인
    채로 잡히는지. 통과만 하는 검사는 커버리지처럼 보여서 없는 것보다 나쁘다.
-5. 걸린 위반을 고친다(회전·압축·이월). **가드를 초록으로 만들고 끝낸다** — soft 경고를
+5. 결정이 한 파일이면 쪼갠다(§5). 이어 붙인 `docs/decisions/*.md` 와 옛 본문을 빈 줄·`---` 를
+   빼고 diff 해 **한 줄도 안 빠졌는지** 확인하고, `CLAUDE.md` 의 결정 규칙 줄을 새 위치로 고친다.
+6. 걸린 위반을 고친다(회전·압축·이월). **가드를 초록으로 만들고 끝낸다** — soft 경고를
    방치하면 다음 사람이 상한을 무르게 만든다.
-6. 결정으로 남긴다. 무엇을 왜 바꿨는지, 그리고 **버린 안**도.
+7. 결정으로 남긴다. 무엇을 왜 바꿨는지, 그리고 **버린 안**도.
 
 ## 이식성
 

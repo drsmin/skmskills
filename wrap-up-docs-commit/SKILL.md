@@ -27,16 +27,19 @@ check each. Use today's real date; convert relative dates to absolute.
   changed (key files), and the verification result. Match the existing heading style (e.g.
   `## YYYY-MM-DD (NN) — <title>`; use the next sequence number). **Keep it to ~15 lines** — the diff
   holds the detail, this entry holds the orientation.
-- **`docs/decisions.md`** — if a design/direction decision was made, append a new `## D-NNN <title>`
-  section (next number after the current highest) with the **reasoning, not just the what**.
-  Irreversible actions (external integration, publishing, push) belong here too. **Body ≤20 lines**,
-  and if the file has an index table at the top, **add a row there too** — that table is the only part
-  a new session reads, so a missing row makes the decision invisible. Never reuse a number; supersede
-  by marking the old one `폐기(→D-NNN)`.
+- **Decisions** — if a design/direction decision was made, record it with the **reasoning, not just
+  the what** (next number after the current highest). Irreversible actions (external integration,
+  publishing, push) belong here too. **Body ≤20 lines.** Where it goes depends on the layout:
+  if `docs/decisions/` exists, create `docs/decisions/D-NNN.md` (first line `# D-NNN. <title>`) and
+  do **not** open the other decision files; otherwise append a `## D-NNN <title>` section to
+  `docs/decisions.md`. Either way **add a row at the top of the index table** in `docs/decisions.md`
+  — that table is the only part a new session reads, so a missing row makes the decision invisible
+  (the budget guard flags it). Never reuse a number; supersede by marking the old one `폐기(→D-NNN)`.
 - **`docs/todo.md`** — mark finished items `[x]` with a one-line summary; add follow-ups as `[ ]`.
 - **`docs/current-task.md`** — demote the old "★current entry point★" to "★previous entry point★"
-  and write a new current entry point so the next session resumes cleanly. **Keep at most ~5 entry
-  points**; delete the overflow rather than archiving it (`session-log.md` already has it).
+  and write a new current entry point so the next session resumes cleanly. **Keep exactly one entry
+  point** (the budget guard warns above 1, blocks above 3); delete the overflow rather than archiving
+  it — the briefing already shows the last 3 `session-log.md` entries.
 - **`CLAUDE.md`** — only if a new invariant rule, doc, or resource location was introduced (it's the
   rule hub / index, not a changelog). It's auto-loaded into every session, so prefer **replacing** a
   line or adding one index row over appending prose. If a rule needs explanation, put the explanation
@@ -54,7 +57,7 @@ to `docs/archive/session-log-YYYY-MM.md`, completed phases to `docs/archive/todo
 one-line pointer behind). Rotation is a move, not a delete — the history stays in git and searchable,
 it just stops costing every future session.
 
-`decisions.md` is the exception: **compress, never rotate.** Losing the reasoning makes the next
+Decisions are the exception: **compress, never rotate.** Losing the reasoning makes the next
 session re-litigate a settled question.
 
 ## 2. Review before staging

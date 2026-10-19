@@ -9,6 +9,8 @@
 # ENTRY_HEAD='진입점|[Ee]ntry'
 # DEC_ID='ADR-[0-9]{3}'
 # DEC_HEAD='### '
+# 결정 배치 — auto(기본): docs/decisions/ 가 있으면 split. 이전은 bash scripts/split-decisions.sh
+# DEC_LAYOUT=split; DEC_DIR=docs/decisions
 
 # ── 브리핑 창 (CLAUDE.md 가 인용하는 숫자와 같게)
 # SESS_ENTRIES=3

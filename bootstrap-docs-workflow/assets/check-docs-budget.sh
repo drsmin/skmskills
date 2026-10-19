@@ -58,6 +58,13 @@ ENTRY_HEAD='진입점|[Ee]ntry'        # current-task 에서 진입점 절을 �
 DEC_ID='D-[0-9]{3}'                 # 결정 ID (ERE). 예: ADR 이면 'ADR-[0-9]{3}'
 DEC_HEAD='## '                      # 결정 본문 헤딩 머리. 예: '### '
 BUDGET_MODE=block                   # block = hard 시 커밋 차단 · warn = 도입 모드(알리기만)
+# 결정 배치 — single: docs/decisions.md 한 파일에 인덱스 + 본문
+#             split : docs/decisions.md 는 머리말 + 인덱스만, 본문은 DEC_DIR/<ID>.md 하나씩
+#             auto  : DEC_DIR 디렉터리가 있으면 split (기존 설치본은 설정 없이 그대로 single)
+# 왜 split 인가: 한 파일이면 결정 하나를 고치려 해도 편집 도구가 파일 전체를 읽는다. 세션 시작
+# 비용은 브리핑이 막지만 **작업 중 비용**은 결정 수에 비례해 커졌다. 이전: scripts/split-decisions.sh
+DEC_LAYOUT=auto
+DEC_DIR=docs/decisions
 
 # 프로젝트별 값은 **이 파일이 아니라** scripts/docs-budget.conf 에 둔다(있으면 위 값을 덮는다).
 # 그래야 스킬의 새 가드로 이 파일을 갈아 끼워도 캡·형식·모드가 살아남는다. 단 HUB_* 를 여기서
@@ -69,6 +76,31 @@ DEC_BODY_RE="^${DEC_HEAD}${DEC_ID}"
 DEC_ROW_RE="^[|] *${DEC_ID}"
 
 cd "$ROOT" || exit 0
+
+if [ "$DEC_LAYOUT" = auto ]; then
+  if [ -d "$DEC_DIR" ]; then DEC_LAYOUT=split; else DEC_LAYOUT=single; fi
+fi
+# 결정 본문 스트림 — split 이면 파일들을 single 과 **같은 모양**으로 이어 붙인다(첫 헤딩을
+# DEC_HEAD 로 바꿔서). 그래야 아래 본문 검사가 한 벌로 두 배치를 다 잰다 — 두 벌을 두면 한쪽만 고친다.
+# 인덱스(DEC_ROW_RE)는 배치와 무관하게 docs/decisions.md 에서 읽는다.
+DEC_SRC=$(mktemp "${TMPDIR:-/tmp}/dec-src.XXXXXX") || DEC_SRC=/dev/null
+trap 'rm -f "$DEC_SRC"' EXIT
+_dec_files() {   # split 의 결정 파일 목록 (README 는 뺀다). 개행 구분.
+  for f in "$DEC_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in [Rr][Ee][Aa][Dd][Mm][Ee].md|index.md) continue ;; esac
+    printf '%s\n' "$f"
+  done
+}
+if [ "$DEC_LAYOUT" = split ]; then
+  _dec_files | while IFS= read -r f; do
+    awk -v head="$DEC_HEAD" 'NR == 1 { sub(/^#+[ \t]*/, ""); print head $0; next } { print }' "$f"
+    printf '\n'
+  done > "$DEC_SRC"
+elif [ -f docs/decisions.md ]; then
+  cat docs/decisions.md > "$DEC_SRC"
+fi
+DEC_WHERE="decisions.md"; [ "$DEC_LAYOUT" = split ] && DEC_WHERE="$DEC_DIR/"
 
 if [ -t 1 ]; then
   RED=$'\033[31m'; YEL=$'\033[33m'; GRN=$'\033[32m'; DIM=$'\033[2m'; BLD=$'\033[1m'; OFF=$'\033[0m'
@@ -290,15 +322,22 @@ fi
 
 # ── §A-5 decisions.md — 회전하지 않고 압축한다. 재는 것은 **결정당 본문** 이다 ────────
 #     총합 상한은 결정 수에서 유도한다 — 결정이 늘었다는 이유로 빨개지면 가드는 무르게 된다.
-if [ -f docs/decisions.md ]; then
-  n_dec=$(_count docs/decisions.md "$DEC_BODY_RE")
-  pre=$(awk -v re="$DEC_BODY_RE" '$0 ~ re {print NR-1; exit}' docs/decisions.md)
+if [ -s "$DEC_SRC" ]; then
+  n_dec=$(_count "$DEC_SRC" "$DEC_BODY_RE")
+  pre=$(awk -v re="$DEC_BODY_RE" '$0 ~ re {print NR-1; exit}' "$DEC_SRC")
   [ -n "$pre" ] || pre=0
   if [ "$n_dec" -gt 0 ]; then
-    check "docs/decisions.md" "$(_lines docs/decisions.md)" \
-      "$(( pre + n_dec * (DECBODY_SOFT + DEC_OVERHEAD) ))" \
-      "$(( pre + n_dec * (DECBODY_HARD + DEC_OVERHEAD) ))" "줄" \
-      "결정당 본문을 ${DECBODY_SOFT}줄 이내로 압축한다 (§5 — 회전 금지)"
+    if [ "$DEC_LAYOUT" = split ]; then
+      # 총합은 한 파일이 아니라 재지 않는다 — 한 번에 열리는 단위가 결정 하나다
+      HR_PARENT="$DEC_DIR/"   # 아래 "  └ 결정당 본문" 이 앞 항목(todo 등)에 붙지 않게
+      printf '%s  ok  %s %-34s %4d개 %s(split — 본문은 %s<ID>.md, 총합 캡 없음)%s\n' \
+        "$GRN" "$OFF" "$DEC_DIR/" "$n_dec" "$DIM" "$DEC_DIR/" "$OFF"
+    else
+      check "docs/decisions.md" "$(_lines docs/decisions.md)" \
+        "$(( pre + n_dec * (DECBODY_SOFT + DEC_OVERHEAD) ))" \
+        "$(( pre + n_dec * (DECBODY_HARD + DEC_OVERHEAD) ))" "줄" \
+        "결정당 본문을 ${DECBODY_SOFT}줄 이내로 압축한다 (§5 — 회전 금지)"
+    fi
     dec_max=$(awk -v re="$DEC_BODY_RE" '
       $0 ~ re { if (id != "") { if (last > m) m = last } id = 1; n = 0; last = 0; seen = 0; next }
       id != "" {
@@ -307,7 +346,7 @@ if [ -f docs/decisions.md ]; then
         n++; last = n
       }
       END { if (last > m) m = last; print m+0 }
-    ' docs/decisions.md)
+    ' "$DEC_SRC")
     _hr_record "  └ 결정당 본문" "$dec_max" "$DECBODY_SOFT" "$DECBODY_HARD" "줄"
     # 결정별 본문 길이 — 앞뒤 빈 줄과 구분선을 뺀 실제 내용
     long=$(awk -v re="$DEC_BODY_RE" -v idre="$DEC_ID" '
@@ -319,16 +358,16 @@ if [ -f docs/decisions.md ]; then
       }
       END { if (id != "") emit() }
       function emit() { if (last > LIM) printf "%s(%d) ", id, last }
-    ' LIM="$DECBODY_SOFT" docs/decisions.md)
+    ' LIM="$DECBODY_SOFT" "$DEC_SRC")
     if [ -n "$long" ]; then
       # 판정은 최댓값 하나로 한다 — 같은 계산을 두 벌 두면 한쪽만 고치게 된다.
       if [ "$dec_max" -gt "$DECBODY_HARD" ]; then
         printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정당 본문" "최대 ${dec_max}줄 · ${DECBODY_HARD}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
-        ACTIONS+=("${RED}[HARD]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
+        ACTIONS+=("${RED}[HARD]${OFF} $DEC_WHERE → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
         fail=1
       else
         printf '%s soft %s %-34s %s\n' "$YEL" "$OFF" "  └ 결정당 본문" "최대 ${dec_max}줄 · ${DECBODY_SOFT}줄 초과: $long  ${DIM}${HR_NOTE}${OFF}"
-        ACTIONS+=("${YEL}[soft]${OFF} decisions.md → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
+        ACTIONS+=("${YEL}[soft]${OFF} $DEC_WHERE → $long 를 ${DECBODY_SOFT}줄 이내로 압축 (§5)")
         warn=1
       fi
     else
@@ -340,16 +379,46 @@ fi
 
 # ── §A-6 decisions.md 인덱스 표 — 세션 시작에 읽는 것이 이 표뿐이다 ──────────
 if [ -f docs/decisions.md ]; then
+  HR_PARENT="docs/decisions.md"   # 인덱스는 배치와 무관하게 이 파일에 있다
   # 스캔 sanity — 결정 형식을 못 알아보면 본문 0 · 인덱스 0 이 "일치" 로 **통과처럼** 보인다.
   # `### ADR-001` 형식이던 기존 프로젝트에서 실제로 아무것도 재지 않고 초록을 찍었다.
   # 인덱스·목차 같은 머리 헤딩을 빼고도 헤딩이 있는데 결정이 0건이면 형식이 다른 것이다.
   other_heads=$(grep -E '^#{2,3} ' docs/decisions.md | grep -vcE '^#{2,3} *(인덱스|[Ii]ndex|목차)') || other_heads=0
-  if [ "$(_count docs/decisions.md "$DEC_BODY_RE")" -eq 0 ] && [ "$other_heads" -gt 0 ]; then
+  if [ "$DEC_LAYOUT" = single ] && [ "$(_count docs/decisions.md "$DEC_BODY_RE")" -eq 0 ] && [ "$other_heads" -gt 0 ]; then
     bad "  └ 결정 형식을 인식하지 못했다 (헤딩 ${other_heads}개 · '${DEC_HEAD}${DEC_ID}' 0건)" \
         "scripts/docs-budget.conf 에 DEC_ID·DEC_HEAD 를 이 저장소 형식으로 정한다 (예: DEC_ID='ADR-[0-9]{3}' DEC_HEAD='### ')"
   fi
   idx=$(_count docs/decisions.md "$DEC_ROW_RE")
-  bodies=$(_count docs/decisions.md "$DEC_BODY_RE")
+  bodies=$(_count "$DEC_SRC" "$DEC_BODY_RE")
+  if [ "$DEC_LAYOUT" = split ]; then
+    # split 고유의 구조 검사 — 개수만 맞으면 "D-041 이 두 개, D-042 가 없음" 을 놓친다
+    nf=0; bad_head=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      nf=$((nf + 1))
+      fid=$(basename "$f" .md)
+      hid=$(head -1 "$f" | grep -oE "$DEC_ID" | head -1) || hid=""
+      printf '%s\n' "$fid" | grep -qxE "$DEC_ID" || { bad_head="$bad_head $fid(파일명)"; continue; }
+      [ "$fid" = "$hid" ] || bad_head="$bad_head $fid(헤딩:${hid:-없음})"
+    done < <(_dec_files)
+    if [ "$nf" -eq 0 ]; then
+      bad "  └ $DEC_DIR/ 에 결정 파일이 0개 — 본문 검사가 무의미해졌다" \
+          "본문을 $DEC_DIR/<ID>.md 로 두거나, single 이면 디렉터리를 지우고 DEC_LAYOUT=single"
+    fi
+    [ -n "$bad_head" ] && bad "  └ 결정 파일 이름·첫 헤딩 불일치:$bad_head" \
+      "파일 이름은 <ID>.md, 첫 줄은 '# <ID>. 제목' 으로 맞춘다"
+    left=$(_count docs/decisions.md "$DEC_BODY_RE")
+    [ "$left" -gt 0 ] && bad "  └ decisions.md 에 본문 ${left}개가 남아 있다 (split 인데)" \
+      "본문을 $DEC_DIR/<ID>.md 로 옮긴다 — 인덱스 파일이 다시 커진다 (scripts/split-decisions.sh)"
+    ids_idx=$(grep -E "$DEC_ROW_RE" docs/decisions.md | grep -oE "$DEC_ID" | sort -u)
+    ids_body=$(_dec_files | while IFS= read -r f; do basename "$f" .md; done | sort -u)
+    no_body=$(comm -23 <(printf '%s\n' "$ids_idx") <(printf '%s\n' "$ids_body") | tr '\n' ' ')
+    no_row=$(comm -13 <(printf '%s\n' "$ids_idx") <(printf '%s\n' "$ids_body") | tr '\n' ' ')
+    [ -n "${no_body// /}" ] && meh "  └ 인덱스에만 있고 파일이 없는 결정: $no_body" \
+      "$DEC_DIR/<ID>.md 를 만들거나 인덱스 행을 고친다"
+    [ -n "${no_row// /}" ] && [ "$idx" -gt 0 ] && meh "  └ 파일만 있고 인덱스 행이 없는 결정: $no_row" \
+      "decisions.md 인덱스 표 맨 위에 한 줄을 넣는다"
+  fi
   if [ "$idx" -eq 0 ] && [ "$bodies" -gt 0 ]; then
     printf '%s HARD %s %-34s %s\n' "$RED" "$OFF" "  └ 결정 인덱스 표" "없음 — 세션 시작 읽기 프로토콜이 깨진다"
     ACTIONS+=("${RED}[HARD]${OFF} decisions.md → 상단에 D-번호 인덱스 표를 만든다")
@@ -530,9 +599,9 @@ if [ -f CLAUDE.md ]; then
   fi
 
   # B-6 D-번호가 decisions.md 에 정의돼 있는가
-  if [ -f docs/decisions.md ]; then
+  if [ -s "$DEC_SRC" ]; then
     d_refs=$(grep -oE "$DEC_ID" CLAUDE.md | sort -u)
-    d_def=$(sed -nE "s/^#{2,3} *(${DEC_ID}).*/\\1/p" docs/decisions.md | sort -u)
+    d_def=$(sed -nE "s/^#{2,3} *(${DEC_ID}).*/\\1/p" "$DEC_SRC" | sort -u)
     ref_n=0; undefined=
     while IFS= read -r d; do
       [ -n "$d" ] || continue
@@ -544,15 +613,15 @@ if [ -f CLAUDE.md ]; then
       [ -n "$d" ] && def_n=$((def_n + 1))
     done < <(printf '%s\n' "$d_def")
     if [ -n "$undefined" ]; then
-      bad "  decisions.md 에 없는 결정 참조:$undefined" \
-          "해당 D-번호를 decisions.md 에 정의하거나 CLAUDE.md 의 참조를 고친다"
+      bad "  $DEC_WHERE 에 없는 결정 참조:$undefined" \
+          "해당 D-번호를 $DEC_WHERE 에 정의하거나 CLAUDE.md 의 참조를 고친다"
     else
       good "  D-번호 참조 ${ref_n}건 전부 해결"
     fi
     # B-7 스캔 sanity — 조용히 0건이면 위 검사가 전부 무의미해진다 (통과처럼 보이는 실패)
     if [ "$ref_n" -gt 0 ] && [ "$def_n" -eq 0 ]; then
-      bad "  decisions.md 정의 스캔이 0건 — D-번호 검사가 무의미해졌다" \
-          "decisions.md 의 '## D-NNN' 제목 형식을 확인한다"
+      bad "  $DEC_WHERE 정의 스캔이 0건 — D-번호 검사가 무의미해졌다" \
+          "$DEC_WHERE 의 결정 제목 형식(DEC_HEAD·DEC_ID)을 확인한다"
     fi
   fi
   if [ "$path_n" -eq 0 ]; then

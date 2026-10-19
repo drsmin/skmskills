@@ -119,10 +119,21 @@ The per-entry length note is load-bearing: this is the file that grows fastest.
 CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commit 훅) 생성.
 ```
 
-### `docs/decisions.md` — design/direction decisions, numbered `D-NNN`
+### `docs/decisions.md` + `docs/decisions/` — design/direction decisions, numbered `D-NNN`
 
-**The index table at the top is required** — it's the only part a new session reads, so
-`check-docs-budget.sh` treats a missing index as a hard failure. Add one row per decision.
+**One decision = one file** (`docs/decisions/D-NNN.md`, first line `# D-NNN. 제목`), and
+`docs/decisions.md` holds only the preamble and the **index table** — newest row on top, because the
+briefing prints the first `DEC_ROWS` rows and folds the rest. A missing index is a hard failure: it
+is the only part a new session reads.
+
+Why split from day one: in a single file the briefing still bounds the *session-start* read, but
+**work-time** cost grows with every decision — editing one decision means the edit tool reads the
+whole file, and opening it without a range pulls in everything (one repo: one decision 1.3k chars
+vs the file 47k = 35x). Split, both reading and writing one decision stay one decision's size.
+The guard and the briefing detect the layout (`DEC_LAYOUT=auto`: `docs/decisions/` exists → split),
+so old single-file installs keep working; `scripts/split-decisions.sh` migrates them (§3b).
+
+`docs/decisions.md`:
 
 ```markdown
 # Design Decisions
@@ -130,11 +141,12 @@ CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commi
 설계·방향 결정 기록. 각 결정은 무엇을·왜. 되돌리기 어려운 작업도 여기 남긴다.
 (Each decision records the *what* and the *why*; irreversible actions belong here too.)
 
-**세션 시작 시에는 아래 인덱스 표만 읽고, 필요한 D-번호만 펼쳐 읽는다.**
-본문은 각 20줄 이내로 유지한다. 이 파일은 아카이브로 회전하지 않는다 — 근거를 잃으면 다음
-세션이 같은 논쟁을 반복한다. 정책: `docs/context-budget.md` §5.
+**세션 시작 시에는 아래 인덱스 표만 읽는다.** 본문은 `docs/decisions/<ID>.md` 에 하나씩 있다 —
+필요한 ID 의 **그 파일만** 연다. 새 결정은 파일을 만들고(본문 20줄 이내) 표 **맨 위**에 한 줄.
+이 기록은 아카이브로 회전하지 않는다 — 근거를 잃으면 다음 세션이 같은 논쟁을 반복한다.
+정책: `docs/context-budget.md` §5.
 
-## 인덱스
+## 인덱스 (최신이 위)
 
 | D | 결정 | 상태 |
 | --- | --- | --- |
@@ -142,14 +154,17 @@ CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commi
 | D-001 | 문서 기반 작업 규율 채택 | 유효 |
 
 > 번호는 재사용하지 않는다. 뒤집힌 결정은 지우지 않고 상태를 `폐기(→D-0NN)` 로 바꾼다.
+```
 
----
+`docs/decisions/D-002.md`:
 
-## D-002. 컨텍스트 예산 안전장치
+```markdown
+# D-002. 컨텍스트 예산 안전장치
 
 **결정:** 기록 파일의 단조 증가가 세션 시작 비용을 늘리는 것을 막는다. 3중 방어:
 ① **읽기 범위를 스크립트가 고정**(`scripts/session-brief.sh` 출력이 세션 시작 읽기의 전부),
 ② 캡(`scripts/check-docs-budget.sh`, pre-commit 훅), ③ 초과분 `docs/archive/` 회전.
+결정은 하나 = 파일 하나(`docs/decisions/`) — 결정을 읽거나 고칠 때도 그 하나만 열린다.
 정책 전문 `docs/context-budget.md`.
 
 **이유:** 파일이 커지는 것 자체는 문제가 아니다. **매 세션 읽는 양이 커지는 것**이 문제다.
@@ -157,10 +172,12 @@ CLAUDE.md 규칙 허브 + 컨텍스트 예산 안전장치(`scripts/`, pre-commi
 적으면 안 지켜진다 — 자를 줄 번호가 없어 결국 파일 전체가 읽힌다(실측 4.2배). 스크립트가
 자른다. `CLAUDE.md` 만은 매 세션 자동 로드되어 읽기 프로토콜로 방어할 수 없어 하드 캡 +
 순증 금지 규칙을 적용한다.
+```
 
----
+`docs/decisions/D-001.md`:
 
-## D-001. 문서 기반 작업 규율 채택
+```markdown
+# D-001. 문서 기반 작업 규율 채택
 
 **결정:** 모든 작업을 docs/ 에 기록하고 CLAUDE.md 를 규칙 허브로 둔다. 마일스톤마다 커밋+push.
 
@@ -249,6 +266,7 @@ re-deriving the reasoning. Tune the numbers to project scale, but keep the `CLAU
 | `current-task.md` | 전문 | O(1) — 캡이 걸려 있음 |
 | `session-log.md` | **최근 3개 항목** (머리말도 자른다) | O(1) — 파일이 커져도 불변 |
 | `decisions.md` | 머리말 + 인덱스 표의 **최근 25행** (`DEC_ROWS`) | O(1) — 그 앞 행은 접고 `grep` 으로 펼친다 |
+| `decisions/<ID>.md` | 출력하지 않음 — 필요한 ID 의 **그 파일만** 연다 | 0 (펼칠 때도 결정 하나) |
 | `todo.md` | **`★` 표시된 Phase 만** | O(1) |
 | 참조 문서(설계·스펙) · `archive/` | 출력하지 않음 | 0 |
 
@@ -302,7 +320,7 @@ grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 
 
 - **백틱 경로 존재 검사** — 파일을 옮기거나 지우고 문서를 안 고치면 허브가 조용히 거짓말한다.
   위치 인덱스가 틀린 허브는 없는 것보다 나쁘다(다음 세션이 그걸 믿고 헤맨다).
-- **`D-번호` 해결 검사** — 참조한 결정이 `docs/decisions.md` 에 실제로 정의돼 있는지.
+- **`D-번호` 해결 검사** — 참조한 결정이 실제로 정의돼 있는지(`docs/decisions/<ID>.md`, 한 파일 배치면 `docs/decisions.md`).
 
 ### 검사하지 않는 것
 
@@ -323,8 +341,8 @@ grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 
 | `docs/session-log.md` **항목당 본문** | **15줄** | **22줄** | 상세를 `decisions.md` 로 옮기고 항목엔 `D-번호`만 |
 | `docs/todo.md` | 120줄 | 200줄 | 완료 Phase 회전 |
 | `docs/todo.md` `★` 마커 | — | **필수 1~2개** | 진행 중인 Phase 헤딩에 `★` (브리핑이 이걸로 찾는다) |
-| `docs/decisions.md` **결정당 본문** | **20줄** | **30줄** | §5 — 그 결정을 압축한다 |
-| `docs/decisions.md` 총합 | (파생) | (파생) | `서문 + 결정수 × (20\|30 + 4)` — 고정값이 아니다 |
+| 결정당 본문 (`docs/decisions/<ID>.md`) | **20줄** | **30줄** | §5 — 그 결정을 압축한다 |
+| `docs/decisions.md` 총합 (한 파일 배치만) | (파생) | (파생) | `서문 + 결정수 × (20\|30 + 4)` — split 이면 재지 않는다 |
 | `docs/decisions.md` **인덱스 행 길이** | **100자** | **140자** | 그 행을 줄인다 — 상세는 본문에 있다 |
 | **세션 브리핑 출력** | **14,000자** | **20,000자** | 아래 조각 중 빨간/노란 것을 줄인다 |
 | └ current-task 전문 | 3,200자 | 4,200자 | 긴 줄을 쪼개지 말고 **덜어낸다** |
@@ -385,10 +403,15 @@ grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 
 진입점은 **1개**. 초과분은 그냥 삭제한다 — 브리핑이 `session-log.md` 최근 3개를 이미
 보여주므로 목록을 또 두면 매 세션 두 번 읽는다. ★현재 진입점★ 마커는 새 항목으로 갈아 끼운다.
 
-## 5. decisions.md 는 회전하지 않는다 — 압축한다
+## 5. 결정은 회전하지 않는다 — 압축하고, 하나씩 쪼개 둔다
 
 결정은 **왜 지금 코드가 이렇게 생겼는지**의 유일한 근거다. 아카이브로 밀어내면 다음 세션이
 같은 논쟁을 반복한다. 회전 대신:
+
+- **결정 하나 = 파일 하나** (`docs/decisions/D-NNN.md`). 한 파일에 두면 세션 시작은 브리핑이
+  막아도 결정을 고칠 때마다 편집 도구가 파일 전체를 읽고, 그 비용은 결정 수에 비례해 커진다.
+  쪼개 두면 읽기·쓰기가 결정 하나로 고정된다. 한 파일로 쌓인 저장소는
+  `bash scripts/split-decisions.sh` 로 옮긴다(가드·브리핑은 `docs/decisions/` 가 있으면 알아서 split).
 
 - **상단 인덱스 표**를 유지한다 (D-번호 + 한 줄 + 상태). 세션 시작에 읽는 건 이 표뿐이다.
 - 각 결정 본문은 **20줄 이내.** 길어지면 상세를 참조 문서로 옮기고 결정에는 링크만 둔다.
@@ -396,8 +419,8 @@ grep 한 번이면 펼쳐진다 — 아카이브가 아니다(§5 는 그대로 
   고정 캡을 두지 않는다 — 세션 시작에 읽는 건 인덱스 표뿐이라 총합은 세션 비용이 아니고,
   못 지킬 고정값을 두면 가드가 결국 무르게 만들어진다.
 - 뒤집힌 결정은 지우지 않고 상태를 `폐기(→D-0NN)` 로 바꾼다. **번호는 재사용하지 않는다.**
-- hard 캡에 닿으면 `docs/archive/decisions-001-050.md` 로 **본문만** 분할하고
-  인덱스 표는 `decisions.md` 에 전부 남긴다.
+- 인덱스 표는 `decisions.md` 에 **전부** 남긴다(최신이 위). split 이면 가드가 표의 ID 와 파일
+  목록을 맞대 보고, 파일 이름과 첫 헤딩의 ID 가 다르거나 `decisions.md` 에 본문이 남으면 막는다.
 
 ## 6. 점검
 
@@ -478,7 +501,7 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 ## 작업 규칙 (항상 적용)
 **모든 작업은 기록한다. 단 짧게 — 누적되는 파일이다.**
 - 완료한 일 → `docs/session-log.md` 최상단. **항목당 15줄 이내**
-- 설계·방향 결정 → `docs/decisions.md` 에 `D-번호` + 근거. **인덱스 표에 한 줄(100자 이내) 추가**
+- 설계·방향 결정 → `docs/decisions/D-NNN.md` 새 파일(본문 20줄 이내) + `docs/decisions.md` **인덱스 표 맨 위에 한 줄**(100자 이내)
 - 진행 상태 → `docs/todo.md` · `docs/current-task.md`(진입점 **1개**, 나머지는 삭제)
 - 되돌리기 어려운 작업(외부 연동·push 등) → 결정으로 남김
 - 마일스톤마다 커밋하고 곧바로 push
@@ -518,6 +541,8 @@ cp "<skill base dir>/assets/check-docs-budget.sh"   scripts/
 cp "<skill base dir>/assets/install-hooks.sh"       scripts/
 cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
 cp "<skill base dir>/assets/docs-budget.conf.example" scripts/   # 프로젝트별 값은 여기로
+cp "<skill base dir>/assets/split-decisions.sh"     scripts/   # 한 파일 결정 기록 → 하나씩 (기존 저장소용)
+mkdir -p docs/decisions                                           # 새 저장소는 처음부터 split
 chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
 ```
@@ -552,6 +577,11 @@ bash scripts/install-hooks.sh
   **Section sprawl is the main route to hub bloat**, so adding a section must touch the doc *and*
   this file. Edit it to match whatever headings you actually installed. Entries start with `## `;
   comments start with `# ` (one hash) — the two must not overlap, or the list parses empty.
+- `split-decisions.sh` — moves every `## D-NNN` body out of `docs/decisions.md` into
+  `docs/decisions/<ID>.md` (first line `# <ID>. 제목`), leaving the preamble + index. Builds the index
+  from the headings if there is none (newest on top). `--dry-run` shows the plan; it refuses on an
+  already-split repo, duplicate IDs, or an unrecognized format, and writes nothing unless every body
+  came out. A new repo doesn't need it — create `docs/decisions/` from the start.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
   relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
@@ -613,6 +643,18 @@ git checkout docs/session-log.md
 The second one is the point of the whole unit-vs-total distinction: the file-level cap does **not**
 fire, and without the per-entry check the guard reports all-green while the briefing has doubled.
 
+**And the split-layout checks** (skip on a single-file log) — a split that drifts reads as green
+unless these fire:
+
+```bash
+sed -i '1s/D-001/D-009/' docs/decisions/D-001.md            # 파일 이름 ≠ 첫 헤딩
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
+git checkout docs/decisions/D-001.md
+printf '\n## D-099. 남은 본문\n\nx\n' >> docs/decisions.md   # split 인데 인덱스 파일에 본문
+bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
+git checkout docs/decisions.md
+```
+
 **And the environment checks** — these catch a guard that judges the same commit differently in a
 hook than in your shell, or skips a section without saying so:
 
@@ -625,11 +667,11 @@ bash scripts/check-docs-budget.sh | grep '브리핑 출력'      # 여전히 재
 chmod +x scripts/session-brief.sh
 ```
 
-If `docs/decisions.md` has no index table, the script hard-fails by design — that table is what the
+If `docs/decisions.md` has no index table, the script hard-fails by design (both layouts) — that table is what the
 session-start protocol reads, so its absence breaks the whole scheme.
 
 Finally, run `bash scripts/session-brief.sh` and read the output. It should be a few thousand
-characters, end at the index table (no `## D-` bodies, at most `DEC_ROWS` index rows), and print
+characters, end at the index table (no decision bodies, at most `DEC_ROWS` index rows), and print
 exactly one todo phase.
 
 ## 3b. Existing projects — adopt without breaking them
@@ -651,6 +693,11 @@ Skip this on a new repo. On an existing one the scaffold is the easy part. Three
    rationale, it becomes a decision. Register the surviving `##` headings in
    `claude-md-sections.txt` and add the contract line. Existing content is the user's, so **show
    the move plan before moving anything.**
+4. **Split a single-file decision log.** If `docs/decisions.md` holds the bodies, run
+   `bash scripts/split-decisions.sh --dry-run`, show the plan, then run it without the flag. Verify
+   nothing was lost (concatenate `docs/decisions/*.md` and diff against the old bodies, ignoring blank
+   and `---` lines), run the formatter, and change the `CLAUDE.md` decision rule line to point at
+   `docs/decisions/<ID>.md`. The guard then reports `docs/decisions/ … (split …)`.
 
 Then rotate what is over cap (§4 of the policy), and once the guard is all green **flip
 `BUDGET_MODE=block` and record it as a decision.** Without the flip, adoption mode becomes permanent

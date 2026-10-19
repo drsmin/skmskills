@@ -28,12 +28,15 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   결국 파일 전체가 읽혔다 — 어느 저장소 실측에서 규칙대로 11,754자 vs 실제 49,654자(**4.2배**),
   그것도 **모든 캡이 초록인 상태**로. 그래서 브리핑 스크립트가 범위를 잘라 출력하고, 가드는
   파일 크기 외에 **브리핑 출력 크기**와 **단위**(로그 항목당·결정당 본문)를 함께 잰다.
+  ⭐ **결정은 하나 = 파일 하나**(`docs/decisions/D-NNN.md`, 인덱스는 `docs/decisions.md`). 한 파일이면
+  세션 시작은 막아도 결정을 고칠 때마다 파일 전체가 읽힌다(결정 하나 1.3k자 vs 파일 47k자). 가드·브리핑은
+  `docs/decisions/` 가 있으면 알아서 split 으로 돌고, 기존 저장소는 `assets/split-decisions.sh` 로 옮긴다.
 
 - **context-budget-audit** — 위의 반대쪽. **이미 깔린** 문서 규율이 실제로 O(1) 인지 재고
   개보수한다. "가이드/규칙에서 토큰이 어디서 낭비되나" 류의 질문에 쓴다. 추정 대신 재는 명령,
   증상→고침 체크표(산문뿐인 읽기 범위 · 총합만 재는 가드 · 이중 읽기 · 회전 규칙 없는 디렉터리 ·
   영원히 안 걸리는 회전 조건 · 자기 상태를 서술하는 문서), 그리고 스크립트는 인라인 대신
-  `bootstrap-docs-workflow/assets/` 에서 복사하게 한다.
+  `bootstrap-docs-workflow/assets/` 에서 복사하게 한다. 한 파일로 쌓인 결정 기록을 쪼개는 이전도 맡는다.
 - **wrap-up-docs-commit** — 작업 한 단위를 마무리한다. 문서 갱신(session-log·decisions·todo·
   current-task) → 민감정보 스캔 → 커밋(Co-Authored-By) → 즉시 push. bootstrap 의 동반 스킬.
   기록 길이 캡·인덱스 표 갱신·훅 차단 시 회전(우회 금지)·리포 외부 변경 보고까지 안내하므로

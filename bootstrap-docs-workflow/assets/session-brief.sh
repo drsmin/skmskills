@@ -19,6 +19,7 @@ SESS_ENTRIES=3     # session-log 에서 펼칠 최근 항목 수 (CLAUDE.md 와 
 DEC_ROWS=25        # decisions 인덱스에서 펼칠 최근 행 수 — 이 절만 O(결정 수) 였다
 GIT_LOG=10
 DEC_ID='D-[0-9]{3}'; DEC_HEAD='## '   # 결정 형식 — check-docs-budget.sh 와 같은 값
+DEC_LAYOUT=auto; DEC_DIR=docs/decisions   # 결정 배치 — check-docs-budget.sh 와 같은 값
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "git 저장소가 아니다" >&2; exit 1; }
 # 프로젝트별 값(SESS_ENTRIES·DEC_ROWS·형식)은 가드와 같은 설정 파일에서 읽는다
@@ -26,6 +27,9 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "git 저장소가 �
 [ -f "$ROOT/scripts/docs-budget.conf" ] && . "$ROOT/scripts/docs-budget.conf"
 DEC_BODY_RE="^${DEC_HEAD}${DEC_ID}"; DEC_ROW_RE="^[|] *${DEC_ID}"
 cd "$ROOT" || exit 1
+if [ "$DEC_LAYOUT" = auto ]; then
+  if [ -d "$DEC_DIR" ]; then DEC_LAYOUT=split; else DEC_LAYOUT=single; fi
+fi
 
 if [ -t 1 ]; then BLD=$'\033[1m'; DIM=$'\033[2m'; OFF=$'\033[0m'; else BLD=; DIM=; OFF=; fi
 
@@ -78,10 +82,18 @@ if [ -f docs/decisions.md ]; then
     { foldline(); print }
     END { foldline() }
   ' docs/decisions.md
-  nd=$(grep -cE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null) || nd=0
-  first=$(grep -oE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null | head -1 | grep -oE "$DEC_ID") || first=""
-  printf '%s… 본문 %d개는 펼치지 않았다. 예: sed -n "/^%s%s/,/^%s/p" docs/decisions.md%s\n' \
-    "$DIM" "$nd" "$DEC_HEAD" "${first:-<ID>}" "$DEC_HEAD" "$OFF"
+  if [ "$DEC_LAYOUT" = split ]; then
+    # 본문은 결정 하나 = 파일 하나. 펼치는 비용이 결정 하나로 고정된다
+    nd=$(ls "$DEC_DIR" 2>/dev/null | grep -cE "^${DEC_ID}[.]md$") || nd=0
+    first=$(grep -oE "$DEC_ROW_RE" docs/decisions.md 2>/dev/null | head -1 | grep -oE "$DEC_ID") || first=""
+    printf '%s… 본문 %d개는 펼치지 않았다. 결정 하나 = 파일 하나: %s/%s.md%s\n' \
+      "$DIM" "$nd" "$DEC_DIR" "${first:-<ID>}" "$OFF"
+  else
+    nd=$(grep -cE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null) || nd=0
+    first=$(grep -oE "$DEC_BODY_RE" docs/decisions.md 2>/dev/null | head -1 | grep -oE "$DEC_ID") || first=""
+    printf '%s… 본문 %d개는 펼치지 않았다. 예: sed -n "/^%s%s/,/^%s/p" docs/decisions.md%s\n' \
+      "$DIM" "$nd" "$DEC_HEAD" "${first:-<ID>}" "$DEC_HEAD" "$OFF"
+  fi
 else miss docs/decisions.md; fi
 
 # ── 4. todo.md — ★ 표시된 Phase 만 ──────────────────────────────────────────
