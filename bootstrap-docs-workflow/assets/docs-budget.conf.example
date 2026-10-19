@@ -19,3 +19,14 @@
 # ── 캡 (CLAUDE.md 의 HUB_* 는 계약 줄과도 같이 고쳐야 한다)
 # BRIEF_SOFT=14000; BRIEF_HARD=20000
 # CURTASK_CHARS_SOFT=3200; CURTASK_CHARS_HARD=4200
+
+# ── 게이트 (scripts/check.sh) — 한 줄에 `이름|명령`. 성공은 한 줄, 실패만 전문 (정책 §7)
+#    `pnpm -s` 처럼 출력을 지우는 플래그는 쓰지 않는다 — 실패 원인까지 사라진다.
+# GATE_STEPS='typecheck|pnpm typecheck
+# lint|pnpm lint
+# test|pnpm test
+# docs|bash scripts/check-docs-budget.sh'
+# GATE_SUMMARY_RE='Tests +[0-9]+ passed( \([0-9]+\))?|[0-9]+ passed in [0-9.]+s'
+# ── 소스 파일 크기 (줄) — soft 는 경고(손댈 때 나눈다), hard 는 실패. SRC_SOFT=0 이면 끈다
+# SRC_SOFT=800; SRC_HARD=1500
+# SRC_EXCLUDE='(^|/)(vendor|dist|build|generated)/|\.min\.|\.d\.ts$'

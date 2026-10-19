@@ -24,8 +24,16 @@ $MARKER
 # 컨텍스트 예산 점검 + scripts/pre-commit.d/*.sh. 하나라도 실패하면 커밋 차단.
 # 우회: git commit --no-verify
 ROOT=\$(git rev-parse --show-toplevel)
+# 가드 출력은 통과면 마지막 줄만 — 커밋마다 수천 자가 에이전트 대화에 쌓인다(정책 §7).
+# 막히거나 경고가 있으면 전문을 보인다.
 if [ -f "\$ROOT/scripts/check-docs-budget.sh" ]; then
-  bash "\$ROOT/scripts/check-docs-budget.sh" || exit 1
+  out=\$(bash "\$ROOT/scripts/check-docs-budget.sh" 2>&1); rc=\$?
+  if [ "\$rc" -ne 0 ] || printf '%s\n' "\$out" | grep -q 'soft 권고 초과\|도입 모드'; then
+    printf '%s\n' "\$out"
+  else
+    printf '%s\n' "\$out" | tail -1
+  fi
+  [ "\$rc" -eq 0 ] || exit 1
 fi
 # 확장 검사는 실행 비트가 아니라 파일 존재로 고른다 — 비트만 빠진 검사가 말없이 건너뛰어지지
 # 않게. 검사가 스스로 건너뛸 때는 **건너뛴다고 출력해야 한다**(말없이 통과하는 검사는 없는 것보다 나쁘다).

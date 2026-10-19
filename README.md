@@ -32,6 +32,8 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
   세션 시작은 막아도 결정을 고칠 때마다 파일 전체가 읽힌다(결정 하나 1.3k자 vs 파일 47k자). 가드·브리핑은
   `docs/decisions/` 가 있으면 알아서 split 으로 돌고, 기존 저장소는 `assets/split-decisions.sh` 로 옮긴다.
   회전(session-log 월별 아카이브 · 끝난 todo Phase)은 `assets/rotate-docs.sh` 가 한다 — 전후 내용이 같을 때만 쓴다.
+  세션 *안* 비용(정책 §7): `assets/check.sh` 는 게이트를 성공 한 줄·실패 전문으로 돌리고 소스 파일 크기(800 경고·1,500 실패)를 잰다,
+  `assets/session-cost.py` 는 세션 기록에서 시작·최대 토큰과 대화를 키운 출력을 뽑는다. 커넥터·플러그인은 개인 설정으로 끈다(§3c).
 
 - **context-budget-audit** — 위의 반대쪽. **이미 깔린** 문서 규율이 실제로 O(1) 인지 재고
   개보수한다. "가이드/규칙에서 토큰이 어디서 낭비되나" 류의 질문에 쓴다. 추정 대신 재는 명령,

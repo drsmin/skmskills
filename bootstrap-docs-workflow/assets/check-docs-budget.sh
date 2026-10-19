@@ -580,10 +580,11 @@ if [ -f CLAUDE.md ]; then
 
   # B-5 백틱 경로가 실제로 존재하는가 — 파일을 옮기고 문서를 안 고치면 허브가 조용히 거짓말한다
   #     `bash scripts/x.sh` 처럼 명령이 섞인 경우가 있어 공백으로 쪼갠 뒤 '/' 포함 토큰만 본다.
+  #     `/clear` 같은 슬래시 명령(맨 앞 '/' 하나 + 이름)은 경로가 아니다 — 템플릿이 쓰자 막혔다.
   path_refs=$(
     grep -oE '`[^`]+`' CLAUDE.md | tr -d '`' | tr ' ' '\n' |
       sed 's/[),.:;]*$//' | grep '/' |
-      grep -vE '^~|://|\*|<|>|YYYY|NNN|\{' | sort -u
+      grep -vE '^~|://|\*|<|>|YYYY|NNN|\{|^/[A-Za-z][A-Za-z0-9:_-]*$' | sort -u
   )
   path_n=0; missing_paths=
   while IFS= read -r ref; do

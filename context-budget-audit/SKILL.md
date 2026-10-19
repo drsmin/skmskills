@@ -1,6 +1,6 @@
 ---
 name: context-budget-audit
-description: Use when asked where a project's guides, rules, CLAUDE.md, or docs workflow waste tokens, or when an existing Markdown-first / session-restart install (docs/ with current-task, session-log, decisions, todo) has a session-start cost that grows with project history. Measures the real reading cost and retrofits the fix. For setting up the methodology on a NEW project use bootstrap-docs-workflow instead. Korean-first projects included.
+description: Use when asked where a project's guides, rules, CLAUDE.md, or docs workflow waste tokens, or when an existing Markdown-first / session-restart install (docs/ with current-task, session-log, decisions, todo) has a session-start cost that grows with project history, or when sessions feel slow / grow long ("느려진다", "토큰 낭비 진단"). Measures the real reading cost and the in-session cost (from session transcripts), then retrofits the fix. For setting up the methodology on a NEW project use bootstrap-docs-workflow instead. Korean-first projects included.
 ---
 
 # 컨텍스트 예산 감사 — 이미 깔린 문서 규율을 잰다
@@ -10,7 +10,7 @@ description: Use when asked where a project's guides, rules, CLAUDE.md, or docs 
 산문으로만 있어 거의 항상 새고 있다.
 
 `bootstrap-docs-workflow/assets/` 에 `session-brief.sh`·갱신된 `check-docs-budget.sh`·
-`split-decisions.sh`·`rotate-docs.sh` 가 파일로 있다. **재타이핑하지 말고 거기서 복사한다** — 인라인으로 옮겨 적으면 조용히 드리프트한다.
+`split-decisions.sh`·`rotate-docs.sh`·`check.sh`·`session-cost.py` 가 파일로 있다. **재타이핑하지 말고 거기서 복사한다** — 인라인으로 옮겨 적으면 조용히 드리프트한다.
 
 `CLAUDE.md` 가 "이 파일들을 읽어라"라고 지시하면, **세션 시작 비용이 프로젝트 이력 길이에
 비례해 커진다.** `session-log` 는 세션마다 쌓이고 `decisions` 는 번호가 늘고 `todo` 는 완료
@@ -162,9 +162,26 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
 - **백틱 경로 존재 검사** · **참조 번호 해결 검사** — 위치 인덱스가 틀린 허브는 없는 것보다
   나쁘다. 다음 세션이 그걸 믿고 헤맨다.
 
+## §7. 세션 안 비용 — 실제 세션을 잰다
+
+브리핑이 고정돼도 느려질 수 있다. 느려짐은 **호출마다 들어가는 입력 토큰**이고, 그 수는 세션
+기록에만 있다: `python3 -I <스킬>/assets/session-cost.py` (설치 뒤엔 `scripts/`). 세 값을 본다.
+
+- **시작** — 첫 호출의 입력. 프로젝트 문서(CLAUDE.md·메모리·브리핑)보다 훨씬 크면 나머지는 하네스다
+  (커넥터 도구 이름·안내문, 플러그인, 스킬 목록). 실측: 커넥터가 붙으며 2.7만 → 4.7만, 문서는 수천.
+  → 개인 설정 `.claude/settings.local.json` (bootstrap §3c, 정책 §7). **사람에게 묻고** 쓴다.
+- **최대/시작 배율** — 3배를 넘는 세션이 잦으면 세션 안 누적이다. 실측: 한 세션이 4.7만 → 27.5만,
+  대부분 명령 출력(Bash 91회 15만 자). → 출력 습관 + 마일스톤마다 `/clear`.
+- **큰 도구 결과** — 반복되는 것을 찾는다. 흔한 셋: 게이트 출력(커밋마다 수천 자 → `check.sh`),
+  큰 파일 통째 읽기(→ `check.sh` 크기 검사), 스크린샷(한 장 수만 자 → 영역만 작게).
+
+`check.sh` 를 깔 때 `GATE_STEPS` 를 conf 에 채우고 프로젝트의 `check` 스크립트를 그쪽으로 돌린다.
+**실패 경로를 꼭 본다** — 타입 오류를 하나 심어 원인 줄이 출력되는지. `pnpm -s` 같은 조용한 모드는
+하위 출력까지 지워, 실패해도 아무것도 안 찍히는 게이트가 된다(실제로 그랬다).
+
 ## 적용 순서
 
-1. **잰다** (§2). 규칙대로 vs 파일 전체 두 수를 뽑는다.
+1. **잰다** (§2). 규칙대로 vs 파일 전체 두 수를 뽑는다. 그리고 `session-cost.py` 로 실제 세션(§7).
 2. **덮어쓰기 전에 diff 를 본다.** `diff <스킬>/assets/<파일> scripts/<파일>` 로 이 저장소가
    스크립트에 넣은 커스텀을 찾는다 — 캡 값·브리핑 창·"읽지 않는 것" 목록은
    `scripts/docs-budget.conf`(예시: `assets/docs-budget.conf.example`)로, 훅에 덧붙인 검사는
@@ -182,7 +199,9 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
    빼고 diff 해 **한 줄도 안 빠졌는지** 확인하고, `CLAUDE.md` 의 결정 규칙 줄을 새 위치로 고친다.
 6. 걸린 위반을 고친다 — 미완 항목을 이월한 뒤 `bash scripts/rotate-docs.sh`, 그리고 압축. **가드를 초록으로 만들고 끝낸다** — soft 경고를
    방치하면 다음 사람이 상한을 무르게 만든다.
-7. 결정으로 남긴다. 무엇을 왜 바꿨는지, 그리고 **버린 안**도.
+7. 세션 안 비용을 고친다(§7) — `check.sh`(실패 경로 확인), 훅 갱신(`install-hooks.sh` 는 이 스킬의 훅을
+   통과 시 한 줄로 바꿔 깐다), `CLAUDE.md` 컨텍스트 예산 절에 세션 안 한 줄, 개인 설정은 물어서.
+8. 결정으로 남긴다. 무엇을 왜 바꿨는지, 그리고 **버린 안**도.
 
 ## 이식성
 

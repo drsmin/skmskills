@@ -70,6 +70,12 @@ git status
 git diff --stat
 ```
 
+- **Run the gate.** If `scripts/check.sh` exists (or the project's `check` script points at it), use
+  it — success is one line per step, failure prints the full output of the failing step. Read that
+  output; don't rerun with more verbosity first. Without it, run the project's own checks and take
+  only the tail/summary — a gate that dumps thousands of characters every commit is what makes long
+  sessions slow (`docs/context-budget.md` §7).
+
 - Confirm the changes match what was actually done; read anything surprising.
 - **Secret scan** — never commit tokens/passwords/keys/emails:
   ```
@@ -84,7 +90,9 @@ git diff --stat
 
 Stage and commit with a heredoc for the multi-line message. Use the project's default branch (detect
 with `git branch --show-current`). If a pre-commit hook rejects the commit, **read what it says and
-fix that** (for the budget guard, rotate per §1) rather than bypassing it.
+fix that** (for the budget guard, rotate per §1) rather than bypassing it. Take the commit's output
+as a tail (`git commit … 2>&1 | tail -3`, same for `git push`) — an older hook prints the whole budget
+report on success; on a rejection, read it in full.
 
 End the message with the Co-Authored-By trailer for **whichever
 model is currently running** — take the exact name from the harness's commit-trailer instruction, and
@@ -140,3 +148,6 @@ in sync with origin. If any doc was intentionally left unchanged, say so. If any
 Finally: if work in this session touched files **outside** the repo (user-level skills, `~/.claude`
 settings, global git config), say so explicitly and note that those are **not** covered by this
 commit. Otherwise "committed and pushed" reads as if everything was saved when part of it wasn't.
+
+Close by suggesting `/clear` if the milestone is done: the next session starts from the briefing at a
+fixed cost, while this one carries every tool output so far. (Skip it mid-task.)

@@ -1,6 +1,6 @@
 ---
 name: bootstrap-docs-workflow
-description: Set up a Markdown-first, AI-session-restart working methodology in the current project — scaffold docs/ (current-task, session-log, decisions with D-numbers, todo, recovery, context-budget) plus a CLAUDE.md "rule hub" and a context-budget guard (bounded session-start reads + caps enforced by a pre-commit hook) so the record files can't inflate every future session. Use when starting a new project (or adopting the discipline in an existing one) and the user asks to "set up the docs workflow", "adopt this methodology", "bootstrap the working conventions", "이 방법론 적용해줘", "문서 기반 작업 규율 세팅", or asks to keep context/CLAUDE.md from growing unbounded. Run once per project; it detects the project name/remote and won't clobber files that already exist.
+description: Set up a Markdown-first, AI-session-restart working methodology in the current project — scaffold docs/ (current-task, session-log, decisions with D-numbers, todo, recovery, context-budget) plus a CLAUDE.md "rule hub" and a context-budget guard (bounded session-start reads + caps enforced by a pre-commit hook) so the record files can't inflate every future session — plus in-session cost controls (quiet gate runner, source-file size cap, session-cost measurement, lean personal settings). Use when starting a new project (or adopting the discipline in an existing one) and the user asks to "set up the docs workflow", "adopt this methodology", "bootstrap the working conventions", "이 방법론 적용해줘", "문서 기반 작업 규율 세팅", or asks to keep context/CLAUDE.md from growing unbounded. Run once per project; it detects the project name/remote and won't clobber files that already exist.
 ---
 
 # Bootstrap the Markdown-first / session-restart methodology
@@ -438,6 +438,31 @@ bash scripts/install-hooks.sh         # pre-commit 훅 설치 (클론마다 1회
 
 훅은 hard 초과 시 커밋을 막고 soft 초과 시 경고만 한다. 급할 때 우회는 `git commit --no-verify`
 이지만, 우회했다면 그 세션 안에 회전을 처리한다. 미룰수록 회전 비용이 커진다.
+
+## 7. 세션 안 비용 — 시작이 고정돼도 세션은 자란다
+
+느려짐은 **호출마다 들어가는 입력 토큰**이다. 위의 장치는 시작 읽기를 고정할 뿐이고, 실측에서 더 큰
+쪽은 세션 안 누적이었다(시작 4.7만 → 같은 세션 안에서 27.5만, 대부분 명령 출력). 재는 법:
+`python3 -I scripts/session-cost.py` — 세션마다 시작·최대 토큰과 대화를 키운 도구 결과를 보인다.
+
+| 원인 | 장치 |
+| --- | --- |
+| 게이트 출력이 커밋마다 쌓인다 | `scripts/check.sh` — 성공은 단계당 한 줄, 실패만 전문. 훅도 통과면 한 줄 |
+| 큰 파일을 통째로 읽는다 | `check.sh` 끝의 크기 검사 — soft(800줄) 경고·hard(1,500줄) 실패. 손댈 때 나눈다 |
+| 기본 부하(커넥터·플러그인·스킬 목록) | 개인 설정 `.claude/settings.local.json` 으로 안 쓰는 것을 끈다(아래) |
+| 긴 출력·넓은 탐색·스크린샷 | 습관(아래) |
+
+**습관.** 명령·로그 출력은 `tail`·`grep`·요약으로 받는다. 큰 파일은 범위를 지정해 연다. 여러 파일을
+훑는 탐색은 하위 에이전트에 맡기고 결론만 받는다. 스크린샷은 필요한 영역만 작게 찍는다(한 장이
+수만 자다). **마일스톤마다 커밋하고 `/clear`** — 새 세션은 브리핑 한 번이면 이어진다.
+
+**개인 설정** (git 에 올리지 않는다 — 사람마다 쓰는 연결이 다르다):
+
+    { "disableClaudeAiConnectors": true,
+      "enabledPlugins": { "<이름>@<마켓>": false } }
+
+커넥터는 이 프로젝트에서 전부 꺼진다(다시 켜려면 줄을 지우고 새 세션). 플러그인 이름은
+`claude plugin list`, 다시 켜기는 `/plugin`. 효과는 다음 세션의 `session-cost.py` 시작 값으로 확인한다.
 ```
 
 ### `docs/archive/README.md` — the rotation target
@@ -516,6 +541,7 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 ## 컨텍스트 예산
 `bash scripts/check-docs-budget.sh` — pre-commit 훅에서 자동 실행된다.
 초과 시 회전 절차는 `docs/context-budget.md`. 훅 설치: `bash scripts/install-hooks.sh`
+**세션 안:** 게이트는 `bash scripts/check.sh` · 긴 출력은 꼬리만 · 큰 파일은 범위로 · 마일스톤마다 `/clear` (§7)
 
 ## 위치 인덱스
 | 종류 | 위치 |
@@ -549,6 +575,8 @@ cp "<skill base dir>/assets/claude-md-sections.txt" scripts/
 cp "<skill base dir>/assets/docs-budget.conf.example" scripts/   # 프로젝트별 값은 여기로
 cp "<skill base dir>/assets/split-decisions.sh"     scripts/   # 한 파일 결정 기록 → 하나씩 (기존 저장소용)
 cp "<skill base dir>/assets/rotate-docs.sh"         scripts/   # session-log · todo 회전
+cp "<skill base dir>/assets/check.sh"               scripts/   # 조용한 게이트 + 소스 크기 (§7)
+cp "<skill base dir>/assets/session-cost.py"        scripts/   # 세션 비용 실측 (읽기 전용)
 mkdir -p docs/decisions                                           # 새 저장소는 처음부터 split
 chmod +x scripts/*.sh
 bash scripts/install-hooks.sh
@@ -595,6 +623,17 @@ bash scripts/install-hooks.sh
   `★` to `docs/archive/todo-done.md`. It never carries over unfinished items — that is a judgement —
   it lists the mixed phases instead. `--dry-run` first; it writes nothing unless the content lines
   before and after match exactly, and refuses an entry whose heading has no date.
+- `check.sh` — **the gate, quiet on success** (policy §7). Runs `GATE_STEPS` from the conf (`이름|명령`
+  per line — fill it with the project's real typecheck/lint/test commands plus the budget guard, and
+  point the project's `check` script at it). Success prints one line per step, failure prints that
+  step's full output and stops — never truncate it, a cause outside the tail costs a rerun. Then it
+  sizes tracked source files: `SRC_SOFT` (800) warns, `SRC_HARD` (1,500) fails. **Don't put `pnpm -s` /
+  `npm -s` in a step** — silent mode also drops child output, so the failure prints nothing. Verify
+  both paths: plant a type error, confirm the cause line shows, revert.
+- `session-cost.py` — read-only, `python3 -I scripts/session-cost.py`. Reads the session transcripts'
+  `usage` and prints per session the first call's input tokens (baseline), the peak (in-session
+  growth), and which tool results grew the conversation. The guard measures what the docs *would*
+  cost; this measures what sessions *did* cost.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
   relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
@@ -722,6 +761,17 @@ marker) is recognized as its own. If that hook carries extra project checks, the
 and prints exactly the lines that would be lost; move them to `scripts/pre-commit.d/*.sh`, then
 run `bash scripts/install-hooks.sh --migrated`. The old hook is kept as `pre-commit.legacy.bak`.
 
+## 3c. Lean sessions — offer, don't impose
+
+The baseline before any work is mostly harness, not docs: claude.ai connectors (tool names + server
+instructions), plugins, skill listings. One machine went from 27k to 47k tokens per call at session
+start as connectors were added, against a few thousand for the project docs. These are **personal**
+choices (who uses Gmail from this repo is not a repo decision), so ask, then write
+`.claude/settings.local.json` — policy §7 has the JSON; plugin names come from `claude plugin list`.
+Make sure `.claude/settings.local.json` is ignored (add it to `.gitignore` if `git check-ignore` says
+no). If a settings file exists, merge keys — never overwrite. Say how to undo: delete the line and
+start a new session (connectors have no per-session toggle); plugins come back via `/plugin`.
+
 ## 4. Report and offer the follow-up
 
 Tell the user exactly which files were **created** vs **skipped (already existed)**, and whether the
@@ -734,7 +784,8 @@ pre-commit hook was installed or declined (existing hook). Then offer:
 
 Tell them the one command that matters day to day: **`bash scripts/session-brief.sh` at the start of
 every session** — that is the whole read, and opening the docs directly is what the discipline
-exists to prevent.
+exists to prevent. And the other half: **commit and `/clear` at each milestone** — the briefing makes
+a fresh session cheap, while a long one grows with every tool output (policy §7).
 
 Mention two things the user needs to know about the guard:
 
