@@ -26,6 +26,9 @@ From an agent shell (or non-interactive ssh) `XDG_RUNTIME_DIR` is unset and `sys
 with `Failed to connect to bus: No medium found`. The script exports
 `XDG_RUNTIME_DIR=/run/user/$(id -u)` itself; if you run systemctl directly, prefix that.
 
+Inside a git repo, `claude remote-control --help` prints the help and then never exits (seen on
+2.1.280) — run it from a non-repo dir (`cd ~`) or under `timeout 10`.
+
 ## Commands
 
 ```bash
