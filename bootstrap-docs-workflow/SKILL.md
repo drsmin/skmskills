@@ -541,7 +541,7 @@ and the script — which turns "just bump it" into a deliberate act. Keep the ba
 ## 컨텍스트 예산
 `bash scripts/check-docs-budget.sh` — pre-commit 훅에서 자동 실행된다.
 초과 시 회전 절차는 `docs/context-budget.md`. 훅 설치: `bash scripts/install-hooks.sh`
-**세션 안:** 게이트는 `bash scripts/check.sh` · 긴 출력은 꼬리만 · 큰 파일은 범위로 · 마일스톤마다 `/clear` (§7)
+**세션 안:** 게이트는 `bash scripts/check.sh` · 긴 출력은 꼬리만 · 큰 파일은 범위로 · 마일스톤마다 `/clear` — 완료 보고 끝에 늘 권한다 (§7)
 
 ## 위치 인덱스
 | 종류 | 위치 |

@@ -16,6 +16,17 @@ git clone https://github.com/drsmin/skmskills.git ~/.claude/skills
 이미 디렉토리가 있으면 그 안에서 `git pull` 한다. (GitHub HTTPS push 는 토큰 인증이 필요하며,
 자격증명·토큰 값은 이 저장소에 남기지 않는다.)
 
+## 전역 규칙 (`global/CLAUDE.md`)
+
+모든 프로젝트·모든 세션에 자동으로 읽히는 `~/.claude/CLAUDE.md` 의 원본. 저장소 밖 파일이라 여기 두고
+심볼릭 링크로 잇는다(복구할 때도 같은 한 줄):
+
+```bash
+ln -sfn ~/.claude/skills/global/CLAUDE.md ~/.claude/CLAUDE.md
+```
+
+지금 담긴 것: 마일스톤 완료 보고의 마지막 줄에 늘 `/clear` 를 권한다.
+
 ## 수록 스킬
 
 - **bootstrap-docs-workflow** — 새 프로젝트에 Markdown-first / AI-세션-재시작 방법론을 세팅한다.

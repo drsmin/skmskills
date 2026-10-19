@@ -149,5 +149,7 @@ Finally: if work in this session touched files **outside** the repo (user-level 
 settings, global git config), say so explicitly and note that those are **not** covered by this
 commit. Otherwise "committed and pushed" reads as if everything was saved when part of it wasn't.
 
-Close by suggesting `/clear` if the milestone is done: the next session starts from the briefing at a
-fixed cost, while this one carries every tool output so far. (Skip it mid-task.)
+**Always** end the report with a last line suggesting `/clear` before the next task: the next session
+starts from the briefing at a fixed cost, while this one carries every tool output so far. Only when
+the next step truly needs this session's context, say why in one line instead. (The user asked for this
+on every milestone — it is also in the global `~/.claude/CLAUDE.md`, see `global/CLAUDE.md`.)
