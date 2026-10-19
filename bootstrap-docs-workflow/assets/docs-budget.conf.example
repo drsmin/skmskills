@@ -30,3 +30,19 @@
 # ── 소스 파일 크기 (줄) — soft 는 경고(손댈 때 나눈다), hard 는 실패. SRC_SOFT=0 이면 끈다
 # SRC_SOFT=800; SRC_HARD=1500
 # SRC_EXCLUDE='(^|/)(vendor|dist|build|generated)/|\.min\.|\.d\.ts$'
+
+# ── 큰 파일 Read 차단 (훅 scripts/hooks/pre-read-size.sh) — **세션 안** 비용의 1순위다
+#    (실측: PNG 5장 = 1,777,896자 = 그 세션 도구 결과의 21%). 금지를 CLAUDE.md 에 적어도
+#    지켜지지 않아 기계로 옮긴 것이다. 바이트가 아니라 **디코딩된 문자 수**가 비용이다
+#    — PNG 는 base64 로 들어와 대략 파일의 1.37배.
+#    ⚠️ 이미지는 막고(hard) 텍스트는 알리기만 한다 — 큰 소스를 한 번 통째로 읽는 것이 정답인
+#       경우가 있고, hard 로 막으면 결국 훅을 끄게 된다. ⚠️ 끄려면 0 — 올려서 풀지 말 것.
+# READ_IMAGE_HARD=40000
+# READ_TEXT_SOFT=60000
+# READ_IGNORE=''
+
+# ── 훅이 쓰는 테스트 러너 (scripts/hooks/pre-commit-test.sh)
+#    ⚠️ 훅 스크립트는 이 스킬에서 **복사**한 것이라 러너·PATH 를 거기 박으면 다음 갱신에 사라진다.
+#    TEST_PATH 는 저장소 기준 상대 경로 — 시스템에 node 가 없는 환경(conda 등)에서만 쓴다.
+# TEST_CMD='yarn test'
+# TEST_PATH=''

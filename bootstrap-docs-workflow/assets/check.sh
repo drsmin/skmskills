@@ -64,7 +64,10 @@ if [ "$SRC_SOFT" -gt 0 ]; then
   big=$(git ls-files -z -- $SRC_GLOBS 2>/dev/null | xargs -0 wc -l 2>/dev/null |
     grep -vE ' total$' | grep -vE "$SRC_EXCLUDE" | awk -v s="$SRC_SOFT" '$1 > s' | sort -rn)
   if [ -n "$big" ]; then
-    over=$(printf '%s\n' "$big" | awk -v h="$SRC_HARD" '$1 > h')
+    # SRC_HARD=0 은 "경고만" — SRC_SOFT 와 같은 "0 이면 끈다" 규약을 hard 에도 둔다.
+    # ⚠️ 0 을 "전부 초과"로 읽지 말 것(awk 가 그렇게 읽어 모든 파일이 hard 가 됐다 — 실제로 겪었다).
+    over=""
+    [ "$SRC_HARD" -gt 0 ] && over=$(printf '%s\n' "$big" | awk -v h="$SRC_HARD" '$1 > h')
     if [ -n "$over" ]; then
       printf '✗ 소스 파일 %d줄 초과 — 나눈 뒤 커밋한다:\n%s\n' "$SRC_HARD" "$over"
       exit 1

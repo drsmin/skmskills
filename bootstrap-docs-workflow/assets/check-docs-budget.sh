@@ -203,6 +203,13 @@ check() {
     printf '%s  --  %s %-34s %s(파일 없음 — 건너뜀)%s\n' "$DIM" "$OFF" "$label" "$DIM" "$OFF"
     return
   fi
+  # hard=0 은 "이 프로젝트엔 해당 없는 개념" — conf 에서 끈다. **건너뛴다고 출력한다**:
+  # 말없이 통과하는 검사는 커버리지처럼 보여서 없는 것보다 나쁘다(이식성 절).
+  if [ "$hard" -le 0 ]; then
+    printf '%s  --  %s %-34s %s(conf 에서 끔 — 값 %d%s)%s\n' \
+      "$DIM" "$OFF" "$label" "$DIM" "$n" "$unit" "$OFF"
+    return
+  fi
   _hr_record "$label" "$n" "$soft" "$hard" "$unit"
   if [ "$HR_STAGE" = 2 ]; then
     printf '%s HARD %s %-34s %5d%s  권고 %d 한계 %d  %s%s%s\n' \
@@ -581,16 +588,26 @@ if [ -f CLAUDE.md ]; then
   # B-5 백틱 경로가 실제로 존재하는가 — 파일을 옮기고 문서를 안 고치면 허브가 조용히 거짓말한다
   #     `bash scripts/x.sh` 처럼 명령이 섞인 경우가 있어 공백으로 쪼갠 뒤 '/' 포함 토큰만 본다.
   #     `/clear` 같은 슬래시 명령(맨 앞 '/' 하나 + 이름)은 경로가 아니다 — 템플릿이 쓰자 막혔다.
+  #     프로젝트가 쓰는 표기는 conf 로 맞춘다(스크립트를 고치면 다음 갱신에 되돌아간다):
+  #       PATH_IGNORE — 경로가 아닌 것(URL 주소·모듈 지정자·외부 저장소 폴더)을 거르는 ERE
+  #       PATH_ROOTS  — 축약 표기를 해석할 접두 목록(예: `foo/bar.ts` → src/lib/foo/bar.ts)
   path_refs=$(
     grep -oE '`[^`]+`' CLAUDE.md | tr -d '`' | tr ' ' '\n' |
       sed 's/[),.:;]*$//' | grep '/' |
       grep -vE '^~|://|\*|<|>|YYYY|NNN|\{|^/[A-Za-z][A-Za-z0-9:_-]*$' | sort -u
   )
+  [ -n "${PATH_IGNORE:-}" ] && path_refs=$(printf '%s\n' "$path_refs" | grep -vE "$PATH_IGNORE")
   path_n=0; missing_paths=
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
     path_n=$((path_n + 1))
-    [ -e "$ref" ] || missing_paths="$missing_paths $ref"
+    [ -e "$ref" ] && continue
+    #     접두를 붙여서도 찾아본다 — 허브가 `src/lib/` 를 생략해 적는 저장소가 있다.
+    hit=0
+    for root in ${PATH_ROOTS:-}; do
+      [ -e "$root$ref" ] && { hit=1; break; }
+    done
+    ((hit)) || missing_paths="$missing_paths $ref"
   done < <(printf '%s\n' "$path_refs")
   if [ -n "$missing_paths" ]; then
     bad "  존재하지 않는 경로:$missing_paths" \

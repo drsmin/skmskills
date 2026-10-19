@@ -447,10 +447,26 @@ bash scripts/install-hooks.sh         # pre-commit 훅 설치 (클론마다 1회
 
 | 원인 | 장치 |
 | --- | --- |
+| **세션 수명** — 긴 세션의 컴팩트가 재독을 만든다 | **재는 자 `python3 -I scripts/session-rereads.py`.** 고침은 **`/clear`** 다(아래) |
 | 게이트 출력이 커밋마다 쌓인다 | `scripts/check.sh` — 성공은 단계당 한 줄, 실패만 전문. 훅도 통과면 한 줄 |
-| 큰 파일을 통째로 읽는다 | `check.sh` 끝의 크기 검사 — soft(800줄) 경고·hard(1,500줄) 실패. 손댈 때 나눈다 |
+| 큰 파일을 통째로 읽는다 | **훅 `scripts/hooks/pre-read-size.sh`** 가 이미지는 막고 텍스트는 알린다 + `check.sh` 끝의 크기 검사 |
+| 커밋 전 테스트를 빠뜨린다 | **훅 `scripts/hooks/pre-commit-test.sh`** — 실패면 도구 호출을 거부한다 |
 | 기본 부하(커넥터·플러그인·스킬 목록) | 개인 설정 `.claude/settings.local.json` 으로 안 쓰는 것을 끈다(아래) |
 | 긴 출력·넓은 탐색·스크린샷 | 습관(아래) |
+
+**실측이 가르친 순서 — 지배 요인은 세션 수명이다.** 한 저장소에서 세션 9개를 뜯어 보니 **한 세션이
+호출의 83% · 컴팩트의 91% · 도구 결과의 90%** 를 혼자 썼고 그 세션의 **재독분이 78%** 였다(나머지
+8세션은 0~2%). 컴팩트가 요약에서 빠진 파일을 다시 읽게 만들고, 그 재독이 캐시를 깨는 것이 체감
+느려짐이다. ⚠️ **느려진다고 문서를 더 깎지 말 것** — 시작 읽기는 위 장치로 이미 O(1)이고, 분자는
+크기가 아니라 **횟수**라 파일 크기 가드엔 보이지 않는다. ⚠️ **재독을 훅으로 막지도 말 것**(컴팩트
+뒤의 정당한 복구 읽기까지 막는다). ⚠️ **컴팩트 문턱(`CLAUDE_CODE_MAX_CONTEXT_TOKENS`)을 올려
+푸는 것도 답이 아니다** — 호출당 지연이 60~80k 구간 3.0초 → 220~240k 구간 **14.0초**라, 문턱을
+올리면 컴팩트는 줄고 호출이 느려진다(실측 8,042 호출).
+
+**산문 금지는 지켜지지 않는다 — 집행 형태를 고른다.** 「화면 사진을 통째로 Read 하지 말 것」을
+`CLAUDE.md` 에 적은 **뒤에도** PNG 5장이 1,777,896자(그 세션 도구 결과의 21%)로 들어왔다. 규칙이
+옳아도 사람·모델이 자를 지점을 모르면 그만이다 ⇒ **훅이 막고 자르는 명령을 준다.** 같은 이유로
+세션 시작 읽기도 산문(「목차만 보라」)에서 **스크립트**(`session-brief.sh`)로 옮겼다.
 
 **습관.** 명령·로그 출력은 `tail`·`grep`·요약으로 받는다. 큰 파일은 범위를 지정해 연다. 여러 파일을
 훑는 탐색은 하위 에이전트에 맡기고 결론만 받는다. 스크린샷은 필요한 영역만 작게 찍는다(한 장이
@@ -577,10 +593,31 @@ cp "<skill base dir>/assets/split-decisions.sh"     scripts/   # 한 파일 결�
 cp "<skill base dir>/assets/rotate-docs.sh"         scripts/   # session-log · todo 회전
 cp "<skill base dir>/assets/check.sh"               scripts/   # 조용한 게이트 + 소스 크기 (§7)
 cp "<skill base dir>/assets/session-cost.py"        scripts/   # 세션 비용 실측 (읽기 전용)
-mkdir -p docs/decisions                                           # 새 저장소는 처음부터 split
-chmod +x scripts/*.sh
+cp "<skill base dir>/assets/session-rereads.py"     scripts/   # 재독분 실측 — 세션 수명의 재는 자 (§7)
+mkdir -p scripts/hooks docs/decisions                             # 새 저장소는 처음부터 split
+cp "<skill base dir>/assets/hooks/pre-commit-test.sh" scripts/hooks/   # 커밋 전 테스트 강제 (§7)
+cp "<skill base dir>/assets/hooks/pre-read-size.sh"   scripts/hooks/   # 큰 파일 Read 차단 (§7)
+chmod +x scripts/*.sh scripts/hooks/*.sh
 bash scripts/install-hooks.sh
 ```
+
+**`scripts/hooks/` 둘은 `.git/hooks` 가 아니라 `.claude/settings.json` 에 붙는다** — 그래서
+클론마다 사람이 설정할 필요가 없다(`install-hooks.sh` 가 다루는 pre-commit 예산 가드와 다른 경로다).
+설치는 그 파일에 `PreToolUse` 항목 둘을 넣는 것이고, 러너·PATH 는 **conf** 에서 읽는다
+(`TEST_CMD`·`TEST_PATH` — 스크립트에 박으면 다음 갱신에 사라진다):
+
+```jsonc
+// .claude/settings.json
+{"hooks":{"PreToolUse":[
+  {"matcher":"Bash","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pre-commit-test.sh\"","timeout":300}]},
+  {"matcher":"Read","hooks":[{"type":"command","command":"bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pre-read-size.sh\"","timeout":10}]}
+]}}
+```
+
+⚠️ **설치한 뒤 네 경로를 되돌려 확인한다**(둘 다 조용히 안 도는 실패 모양이 있다): 큰 이미지가
+막히는지 · 범위 지정(`offset`/`limit`)이 통과하는지 · 테스트 실패가 커밋을 막는지 · 러너가 없을 때
+**통과하지 않고 막는지**. 훅이 실제로 돌았는지는 `tail -3 .git/pre-commit-test.log` 로 본다 —
+⚠️ **커밋에 걸린 시간으로 판단하지 말 것**(훅은 도구 호출 **전에** 돈다).
 
 - `session-brief.sh` — **the first line of defence, and the reason the protocol holds.** It cuts
   each file to its session-start range and prints them as one briefing; `CLAUDE.md` points at this
