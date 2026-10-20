@@ -58,7 +58,9 @@ fi
 if [[ -n $READ_IGNORE ]] && grep -Eq "$READ_IGNORE" <<<"$path"; then exit 0; fi
 
 # 범위를 지정한 Read(offset/limit · pages)는 이미 잘라 읽는 것이다 — 막지 않는다.
-if printf '%s' "$payload" | grep -Eq '"(offset|limit|pages)"[[:space:]]*:'; then exit 0; fi
+# ⚠️ `printf | grep -q` 로 되돌리지 말 것 — pipefail 에서 payload 가 64KB 를 넘고 일치가 앞쪽이면
+# printf 가 SIGPIPE 로 죽어 **범위 지정 Read 가 거짓으로 막힌다**(위 READ_IGNORE 와 같은 형태로 둔다).
+if grep -Eq '"(offset|limit|pages)"[[:space:]]*:' <<<"$payload"; then exit 0; fi
 
 bytes=$(wc -c <"$path" | tr -d ' ')
 

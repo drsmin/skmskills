@@ -52,7 +52,9 @@ while IFS='|' read -r name cmd; do
     exit 1
   fi
   note=$(printf '%s\n' "$out" | grep -oE "$GATE_SUMMARY_RE" | sed -E 's/^Tests +//' | paste -s -d '+' - 2>/dev/null)
-  printf '%s\n' "$out" | grep -qE '⚠|soft 권고' && note="${note:+$note · }경고 있음 — 따로 돌려 본다"
+  # ⚠️ `printf | grep -q` 로 되돌리지 말 것 — pipefail + 출력 64KB 초과 + 일치가 앞쪽이면 grep 이
+  # 먼저 끝나 printf 가 SIGPIPE 로 죽고, **경고가 조용히 사라진다**(실측: 100KB 에서 39/40 드롭).
+  grep -qE '⚠|soft 권고' <<<"$out" && note="${note:+$note · }경고 있음 — 따로 돌려 본다"
   printf '✓ %-14s %3ds%s\n' "$name" "$dt" "${note:+  $note}"
   [ "${CHECK_VERBOSE:-}" = 1 ] && printf '%s\n' "$out"
 done <<EOF

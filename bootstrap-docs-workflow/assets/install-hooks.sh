@@ -28,7 +28,9 @@ ROOT=\$(git rev-parse --show-toplevel)
 # 막히거나 경고가 있으면 전문을 보인다.
 if [ -f "\$ROOT/scripts/check-docs-budget.sh" ]; then
   out=\$(bash "\$ROOT/scripts/check-docs-budget.sh" 2>&1); rc=\$?
-  if [ "\$rc" -ne 0 ] || printf '%s\n' "\$out" | grep -q 'soft 권고 초과\|도입 모드'; then
+  # ⚠️ `printf | grep -q` 로 되돌리지 말 것 — 지금 이 훅엔 pipefail 이 없어 안 터지지만,
+  # 한 줄 들어오면 가드 발화가 조용히 사라진다(check.sh · pre-read-size.sh 와 같은 함정).
+  if [ "\$rc" -ne 0 ] || grep -q 'soft 권고 초과\|도입 모드' <<<"\$out"; then
     printf '%s\n' "\$out"
   else
     printf '%s\n' "\$out" | tail -1
