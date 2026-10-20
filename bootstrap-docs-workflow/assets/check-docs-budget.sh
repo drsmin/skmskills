@@ -527,7 +527,7 @@ if [ -f scripts/session-brief.sh ]; then
   # 초록으로 보인다 — 이 파일이 가장 경계하는 "통과처럼 보이는 실패"다.
   c_missing=''
   for _piece in current-task session-log decisions.md todo.md; do
-    printf '%s\n' "$brief_c_out" | grep -q "━━.*$_piece" || c_missing="$c_missing $_piece"
+    grep -q "━━.*$_piece" <<<"$brief_c_out" || c_missing="$c_missing $_piece"
   done
   if [ -n "$c_missing" ]; then
     bad "   └ 압축판 조각 누락:$c_missing" \
