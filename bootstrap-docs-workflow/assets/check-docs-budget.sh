@@ -438,7 +438,7 @@ if [ -f docs/decisions.md ]; then
       nf=$((nf + 1))
       fid=$(basename "$f" .md)
       hid=$(head -1 "$f" | grep -oE "$DEC_ID" | head -1) || hid=""
-      printf '%s\n' "$fid" | grep -qxE "$DEC_ID" || { bad_head="$bad_head $fid(파일명)"; continue; }
+      grep -qxE "$DEC_ID" <<<"$fid" || { bad_head="$bad_head $fid(파일명)"; continue; }
       [ "$fid" = "$hid" ] || bad_head="$bad_head $fid(헤딩:${hid:-없음})"
     done < <(_dec_files)
     if [ "$nf" -eq 0 ]; then
@@ -676,7 +676,7 @@ if [ -f CLAUDE.md ]; then
     while IFS= read -r d; do
       [ -n "$d" ] || continue
       ref_n=$((ref_n + 1))
-      printf '%s\n' "$d_def" | grep -qx "$d" || undefined="$undefined $d"
+      grep -qx "$d" <<<"$d_def" || undefined="$undefined $d"
     done < <(printf '%s\n' "$d_refs")
     def_n=0
     while IFS= read -r d; do
