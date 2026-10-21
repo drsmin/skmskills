@@ -186,6 +186,7 @@ cp "<skill base dir>/assets/rotate-docs.sh"         scripts/   # session-log · 
 cp "<skill base dir>/assets/check.sh"               scripts/   # 조용한 게이트 + 소스 크기 (§7)
 cp "<skill base dir>/assets/session-cost.py"        scripts/   # 세션 비용 실측 (읽기 전용)
 cp "<skill base dir>/assets/session-rereads.py"     scripts/   # 재독분 실측 — 세션 수명의 재는 자 (§7)
+cp "<skill base dir>/assets/self-check.sh"          scripts/   # 자가 진단 — 위의 재는 자들을 한 화면에 (§7)
 mkdir -p scripts/hooks docs/decisions                             # 새 저장소는 처음부터 split
 cp "<skill base dir>/assets/hooks/pre-commit-test.sh" scripts/hooks/   # 커밋 전 테스트 강제 (§7)
 cp "<skill base dir>/assets/hooks/pre-read-size.sh"   scripts/hooks/   # 큰 파일 Read 차단 (§7)
@@ -277,6 +278,18 @@ bash scripts/install-hooks.sh
   `usage` and prints per session the first call's input tokens (baseline), the peak (in-session
   growth), and which tool results grew the conversation. The guard measures what the docs *would*
   cost; this measures what sessions *did* cost.
+- `self-check.sh` — read-only, `bash scripts/self-check.sh`. Calls the other measures and collects
+  only their verdicts, in five sections: ① installed ② **enforced** ③ caps ④ cost ⑤ record-keeping
+  habit (does `docs/` land in the same commit). The exit code splits two things that look alike:
+  `1` = **enforcement is dead** (the guard file exists but no hook runs it, or the hook log is
+  empty — the "believed installed" state), `0` = enforcement is alive and what remains is for a
+  human to fix (soft caps, session cost, habit). Mixing them gives a diagnostic that is always red,
+  and then nobody reads it. **It is not a new guard** — it blocks nothing and owns no cap; the only
+  cap source is `check-docs-budget.sh`. **Don't add a threshold to it** (two cap sources that
+  disagree leave nobody knowing which is right) and **don't put it in `scripts/pre-commit.d/`**
+  (blocking turns it into a guard). The commands it runs must match the project's own exercises /
+  runbook, so they teach the same thing the tooling does. Verify both paths: delete
+  `.git/hooks/pre-commit`, confirm exit 1, reinstall, confirm exit 0.
 - `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
   hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
   relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
