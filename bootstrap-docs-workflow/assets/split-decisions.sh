@@ -34,12 +34,14 @@ fi
 n=$(grep -cE "$DEC_BODY_RE" "$SRC") || n=0
 [ "$n" -gt 0 ] || die "본문 헤딩 '${DEC_HEAD}${DEC_ID}' 를 0건 찾았다 — 형식을 인식하지 못했다" \
   "scripts/docs-budget.conf 에 DEC_ID·DEC_HEAD 를 이 저장소 형식으로 정한다"
-dups=$(grep -E "$DEC_BODY_RE" "$SRC" | grep -oE "$DEC_ID" | sort | uniq -d | tr '\n' ' ')
+# 헤딩 머리의 ID 만 센다 — 「D-023. … — D-006 개정」처럼 제목이 다른 결정을 언급하면
+# 줄 전체에서 ID 를 뽑을 때 D-006 이 중복으로 잡힌다(실제로 5건 오탐해 분할을 거부했다).
+dups=$(grep -oE "$DEC_BODY_RE" "$SRC" | grep -oE "$DEC_ID" | sort | uniq -d | tr '\n' ' ')
 [ -z "$dups" ] || die "같은 ID 의 본문이 둘 이상이다: $dups" "번호를 정리한 뒤 다시 실행한다 (덮어쓰지 않는다)"
 
 idx=$(grep -cE "$DEC_ROW_RE" "$SRC") || idx=0
-first=$(grep -E "$DEC_BODY_RE" "$SRC" | head -1 | grep -oE "$DEC_ID")
-last=$(grep -E "$DEC_BODY_RE" "$SRC" | tail -1 | grep -oE "$DEC_ID")
+first=$(grep -oE "$DEC_BODY_RE" "$SRC" | head -1 | grep -oE "$DEC_ID")
+last=$(grep -oE "$DEC_BODY_RE" "$SRC" | tail -1 | grep -oE "$DEC_ID")
 echo "결정 본문 ${n}개 (${first} … ${last}) → $DEC_DIR/<ID>.md"
 if [ "$idx" -eq 0 ]; then
   echo "인덱스 표가 없다 → 본문 헤딩에서 만든다 (최신이 위, 상태 '유효' — 뒤집힌 결정은 손으로 고친다)"
