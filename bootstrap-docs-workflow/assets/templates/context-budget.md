@@ -231,3 +231,15 @@ bash scripts/install-hooks.sh         # pre-commit 훅 설치 (클론마다 1회
 
 커넥터는 이 프로젝트에서 전부 꺼진다(다시 켜려면 줄을 지우고 새 세션). 플러그인 이름은
 `claude plugin list`, 다시 켜기는 `/plugin`. 효과는 다음 세션의 `session-cost.py` 시작 값으로 확인한다.
+
+손으로 고치지 말고 **`python3 -I scripts/tools-toggle.py [on|off] <그룹|all>`** 를 쓴다(그룹은 파일 머리에서
+이 기기에 보이는 이름으로 고친다). 켠 뒤엔 `/clear`. **듣는 손잡이는 셋뿐이다(실측):**
+
+| 손잡이 | 효과 |
+| --- | --- |
+| `skillOverrides: "user-invocable-only"` | 스킬이 모델 목록에서 빠진다 — `/이름` 으론 그대로 |
+| `permissions.deny: ["mcp__<서버>"]` | MCP 도구 목록이 빠진다(안내문은 남는다). 원격 제어 세션은 이것만 듣는다 |
+| `enabledPlugins: false` | 마켓 플러그인. claude.ai 동기화 플러그인은 안 꺼진다 |
+
+⚠️ 내장 도구(Artifact·Workflow 등)를 deny 해도 설명은 목록에 남는다 — 호출만 막힌다. 시작의 대부분은
+이 내장 몫이라 프로젝트에서 줄일 수 있는 한계가 있다. 그 아래로 깎기보다 세션 수명(위)을 본다.

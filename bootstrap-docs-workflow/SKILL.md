@@ -187,6 +187,7 @@ cp "<skill base dir>/assets/check.sh"               scripts/   # 조용한 게�
 cp "<skill base dir>/assets/session-cost.py"        scripts/   # 세션 비용 실측 (읽기 전용)
 cp "<skill base dir>/assets/session-rereads.py"     scripts/   # 재독분 실측 — 세션 수명의 재는 자 (§7)
 cp "<skill base dir>/assets/self-check.sh"          scripts/   # 자가 진단 — 위의 재는 자들을 한 화면에 (§7)
+cp "<skill base dir>/assets/tools-toggle.py"       scripts/   # 안 쓰는 스킬·MCP·플러그인 끄고 켜기 (§3c)
 mkdir -p scripts/hooks docs/decisions                             # 새 저장소는 처음부터 split
 cp "<skill base dir>/assets/hooks/pre-commit-test.sh" scripts/hooks/   # 커밋 전 테스트 강제 (§7)
 cp "<skill base dir>/assets/hooks/pre-read-size.sh"   scripts/hooks/   # 큰 파일 Read 차단 (§7)
@@ -443,6 +444,13 @@ choices (who uses Gmail from this repo is not a repo decision), so ask, then wri
 Make sure `.claude/settings.local.json` is ignored (add it to `.gitignore` if `git check-ignore` says
 no). If a settings file exists, merge keys — never overwrite. Say how to undo: delete the line and
 start a new session (connectors have no per-session toggle); plugins come back via `/plugin`.
+Rather than hand-editing JSON, edit the `GROUPS` in `scripts/tools-toggle.py` to the names this machine
+actually shows and run `python3 -I scripts/tools-toggle.py off <group|all>` (`on` to restore, then `/clear`).
+Only three knobs shrink the listing (measured): `skillOverrides: "user-invocable-only"` for skills,
+`permissions.deny: ["mcp__<server>"]` for MCP tools (server instructions stay; in remote-control sessions
+this is the only thing that works), `enabledPlugins: false` for marketplace plugins. Denying a built-in tool
+(Artifact, Workflow…) only blocks calls — its description stays — and claude.ai-synced plugins ignore
+`enabledPlugins`. Don't promise savings from those.
 
 ## 4. Report and offer the follow-up
 
