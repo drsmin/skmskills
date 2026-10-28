@@ -35,6 +35,7 @@ esac
 SESS_ENTRIES=3     # session-log 에서 펼칠 최근 항목 수 (CLAUDE.md 와 같은 값)
 DEC_ROWS=25        # decisions 인덱스에서 펼칠 최근 행 수 — 이 절만 O(결정 수) 였다
 GIT_LOG=10
+GIT_STATUS_LINES=20   # 작업 트리가 이 줄 수를 넘으면 디렉터리 요약으로 접는다
 # 브리핑 꼬리에 적는 「읽지 않는 것」 — 저장소마다 다르다. conf 로 덮어쓴다.
 NOREAD_NOTE='docs/archive/ · docs/reports/ · (그 밖의 참조 문서)'
 # 압축판의 창 — conf 가 덮어쓴다. 기본값은 「conf 가 없어도 압축판이 캡 안에 든다」쪽으로 잡는다.
@@ -166,8 +167,22 @@ else miss docs/todo.md; fi
 sec "git" "최근 ${GIT_LOG}개 커밋 · 작업 트리"
 git log --oneline -"$GIT_LOG"
 printf '\n'
-git status --short 2>/dev/null | head -20 || true
-git status --short 2>/dev/null | grep -q . || printf '%s(작업 트리 깨끗함)%s\n' "$DIM" "$OFF"
+# 작업 트리는 **줄 수만 잘라선 안 된다** — 경로가 길면 20줄이 1만 자가 된다(실측: 긴 한글 경로
+# 62건 이동 = 9.4k자, 주입분 캡의 1.5배). 그 상태에서는 가드가 HARD 로 커밋을 막아 **회전 자체를
+# 못 하는** 닭-달걀이 된다. 줄이 많으면 디렉터리 요약으로 접는다 — 경로 접두만 내므로 조각
+# 크기가 파일명 길이와 무관해진다.
+st=$(git status --short 2>/dev/null || true)
+st_n=$(printf '%s' "$st" | grep -c . || true)
+if [ -z "$st" ]; then
+  printf '%s(작업 트리 깨끗함)%s\n' "$DIM" "$OFF"
+elif [ "${st_n:-0}" -gt "$GIT_STATUS_LINES" ]; then
+  printf '%s\n' "$st" | awk '{p=substr($0,4); sub(/^.* -> /,"",p); gsub(/^"|"$/,"",p); d=p;
+      if (!sub(/\/[^\/]*$/,"/",d)) d="(루트)"; c[d]++}
+    END{for (d in c) printf "  %s  %d건\n", d, c[d]}' | sort
+  printf '%s… 변경 %s건 — 디렉터리 요약이다(전문: git status --short)%s\n' "$DIM" "$st_n" "$OFF"
+else
+  printf '%s\n' "$st"
+fi
 
 # ── 6. 닫는 말. 브리핑 크기는 check-docs-budget.sh 가 잰다 (여기 상수로 적지 않는다) ──
 printf '\n%s━━ 이 브리핑을 읽는 것으로 세션 시작 읽기는 끝난다.%s\n' "$BLD" "$OFF"

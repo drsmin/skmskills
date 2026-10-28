@@ -235,6 +235,10 @@ bash scripts/install-hooks.sh
   and one that sends the reader back into the whole file if it is left implicit. It also folds the
   decisions index to its most recent `DEC_ROWS` rows: a full index was the one O(history) piece left
   in the briefing. Keep the `━━ <file>` section headers — the guard cuts the briefing on them.
+  Its git section folds the working tree into a per-directory summary past `GIT_STATUS_LINES` —
+  **a line cap alone does not bound it**: 62 long Korean paths made the injected briefing 14.4k
+  chars (151% of the cap), and a guard that HARD-blocks in that state blocks the very rotation
+  commit that would fix it. Any briefing piece that prints paths needs a size bound, not a line one.
 - `check-docs-budget.sh` — two parts. **§A** caps file sizes/counts per `context-budget.md` §3.
   **§B** inspects `CLAUDE.md` structurally, because that file is auto-loaded and no read protocol
   can protect it. soft = warn (exit 0), hard = block (exit 1); every violation prints the specific
