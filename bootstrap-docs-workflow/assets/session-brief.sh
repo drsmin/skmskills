@@ -35,6 +35,8 @@ esac
 SESS_ENTRIES=3     # session-log 에서 펼칠 최근 항목 수 (CLAUDE.md 와 같은 값)
 DEC_ROWS=25        # decisions 인덱스에서 펼칠 최근 행 수 — 이 절만 O(결정 수) 였다
 GIT_LOG=10
+# 브리핑 꼬리에 적는 「읽지 않는 것」 — 저장소마다 다르다. conf 로 덮어쓴다.
+NOREAD_NOTE='docs/archive/ · docs/reports/ · (그 밖의 참조 문서)'
 # 압축판의 창 — conf 가 덮어쓴다. 기본값은 「conf 가 없어도 압축판이 캡 안에 든다」쪽으로 잡는다.
 SESS_ENTRIES_COMPACT=1
 DEC_ROWS_COMPACT=8
@@ -170,7 +172,7 @@ git status --short 2>/dev/null | grep -q . || printf '%s(작업 트리 깨끗함
 # ── 6. 닫는 말. 브리핑 크기는 check-docs-budget.sh 가 잰다 (여기 상수로 적지 않는다) ──
 printf '\n%s━━ 이 브리핑을 읽는 것으로 세션 시작 읽기는 끝난다.%s\n' "$BLD" "$OFF"
 printf '%s   위 파일들을 직접 열지 않는다 — 열면 전체가 딸려 오고 그게 이 규율이 막는 것이다.%s\n' "$DIM" "$OFF"
-printf '%s   읽지 않는 것: docs/blueprint.md · docs/archive/ · docs/reports/ · (그 밖의 참조 문서)%s\n' "$DIM" "$OFF"
+printf '%s   읽지 않는 것: %s%s\n' "$DIM" "$NOREAD_NOTE" "$OFF"
 printf '%s   환경이 비어 있으면 docs/recovery.md 를 먼저 본다.%s\n' "$DIM" "$OFF"
 # 압축판은 「전부」가 아니라 **시작점**이다 — 더 필요하면 전체판을 부른다(파일을 열지 않는다).
 [ "$COMPACT" = 1 ] && printf '%s   더 필요하면 전체판: bash scripts/session-brief.sh%s\n' "$DIM" "$OFF"

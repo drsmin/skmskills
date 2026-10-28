@@ -450,7 +450,7 @@ if [ -f docs/decisions.md ]; then
     left=$(_count docs/decisions.md "$DEC_BODY_RE")
     [ "$left" -gt 0 ] && bad "  └ decisions.md 에 본문 ${left}개가 남아 있다 (split 인데)" \
       "본문을 $DEC_DIR/<ID>.md 로 옮긴다 — 인덱스 파일이 다시 커진다 (scripts/split-decisions.sh)"
-    ids_idx=$(grep -E "$DEC_ROW_RE" docs/decisions.md | grep -oE "$DEC_ID" | sort -u)
+    ids_idx=$(grep -oE "$DEC_ROW_RE" docs/decisions.md | grep -oE "$DEC_ID" | sort -u)
     ids_body=$(_dec_files | while IFS= read -r f; do basename "$f" .md; done | sort -u)
     no_body=$(comm -23 <(printf '%s\n' "$ids_idx") <(printf '%s\n' "$ids_body") | tr '\n' ' ')
     no_row=$(comm -13 <(printf '%s\n' "$ids_idx") <(printf '%s\n' "$ids_body") | tr '\n' ' ')
