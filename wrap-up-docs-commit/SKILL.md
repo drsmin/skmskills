@@ -1,6 +1,6 @@
 ---
 name: wrap-up-docs-commit
-description: Close out a chunk of work under the Markdown-first methodology — update the project docs (session-log, decisions, todo, current-task), scan for secrets, then commit and push in one flow. Use when the user asks to "wrap up and commit", "record and push", "문서 정리하고 커밋/푸시", "마무리하고 커밋", or otherwise finalize a milestone. Companion to bootstrap-docs-workflow; assumes docs/ + CLAUDE.md exist (falls back gracefully if some are absent).
+description: Close out a chunk of work under the Markdown-first methodology — update the project docs (session-log, decisions, todo, current-task), scan for secrets, then commit and push in one flow. Use when the user asks to "wrap up and commit", "record and push", "문서 정리하고 커밋/푸시", "마무리하고 커밋", "마감해줘", "여기까지 정리", "마일스톤 끝", or otherwise finalize a milestone. Companion to bootstrap-docs-workflow; assumes docs/ + CLAUDE.md exist (falls back gracefully if some are absent).
 ---
 
 # Wrap up: update docs, commit, push
@@ -14,12 +14,22 @@ the entry and **keeping it short** are the same job — see `docs/context-budget
 one (installed by `bootstrap-docs-workflow`). Caps below are that skill's defaults; if the project set
 different ones, follow the project.
 
-**Only commit when the user has asked.** Never commit unprompted. Once they ask, commit **and** push
+**Only commit when the user has asked** — or when the project's `CLAUDE.md` says to commit at each
+milestone without asking (that standing rule counts as the ask). Once they ask, commit **and** push
 in one flow — under this methodology the standing rule is "push right after committing," so don't ask
-for a separate push confirmation.
+for a separate push confirmation. Still stop and ask first for anything the project's `CLAUDE.md` lists
+as ask-first (force push, history rewrite, breaking format change, external integration, possible secrets).
+
+**Wrap-up is not a place for new work.** Don't fold a new feature or refactor into it; anything you
+noticed goes into `docs/todo.md` or the next-candidates line of `docs/current-task.md` as one line.
 
 Skip any doc a step genuinely doesn't touch, and any file that doesn't exist in this project — but
 check each. Use today's real date; convert relative dates to absolute.
+
+**A project with its own record layout** (no `docs/session-log.md`, e.g. a `STATUS.md` + a decisions
+table at the bottom of `docs/decisions.md`): follow that project's `CLAUDE.md` for §1 instead — update
+the status file (in progress · needs checking · next), keep it short, add decisions as the table says.
+§2–§5 apply unchanged (without `scripts/check.sh`, the gate is at least `bash -n` on changed shell scripts).
 
 ## 1. Update the docs to reflect the work just done
 
@@ -150,6 +160,8 @@ settings, global git config), say so explicitly and note that those are **not** 
 commit. Otherwise "committed and pushed" reads as if everything was saved when part of it wasn't.
 
 **Always** end the report with a last line suggesting `/clear` before the next task: the next session
-starts from the briefing at a fixed cost, while this one carries every tool output so far. Only when
+starts from the briefing at a fixed cost, while this one carries every tool output so far. Where there is
+no `/clear` (a claude.ai project thread, a web/mobile session), suggest continuing in a new thread or
+session instead — `docs/current-task.md` is the handoff, so nothing needs to be carried over by hand. Only when
 the next step truly needs this session's context, say why in one line instead. (The user asked for this
 on every milestone — it is also in the global `~/.claude/CLAUDE.md`, see `global/CLAUDE.md`.)
