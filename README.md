@@ -73,6 +73,11 @@ ln -sfn ~/.claude/skills/global/CLAUDE.md ~/.claude/CLAUDE.md
   에이전트 셸에서 `systemctl --user` 가 `No medium found` 로 죽는 문제(`XDG_RUNTIME_DIR`)도 스크립트가 처리.
   linger(`sudo loginctl enable-linger`)는 사용자가 직접 켠다.
 
+- **debug-report** — 에러·스택·실패 출력만 붙여 넣은 요청을 받으면 **맥락을 스스로 싸게 채우고**
+  (current-task · git diff · 실패 명령, 명령 4개 안쪽) 못 채운 것만 두 개까지 묻는다. 한 번 재현 →
+  가설 3개까지 → **고치기 전에 원인 보고**(번호 붙인 수정안이라 "1번만"으로 답할 수 있다) → 같은 명령으로
+  재확인. 같은 오류로 세 번 실패하면 정리하고 새 세션을 권한다. 마감은 `wrap-up-docs-commit` 에 넘긴다.
+
 **`new-webapp-project` 를 뺀 나머지**는 특정 코드베이스에 묶이지 않은 방법론 스킬이라 어떤
 프로젝트에서도 쓸 수 있다. `bootstrap-docs-workflow`(기록 규율) → `bootstrap-screen-manual`
 (사용 설명서) → `wrap-up-docs-commit`(마무리) 순으로 물리고, `context-budget-audit` 은
