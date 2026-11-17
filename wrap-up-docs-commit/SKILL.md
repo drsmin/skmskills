@@ -1,6 +1,6 @@
 ---
 name: wrap-up-docs-commit
-description: Close out a chunk of work under the Markdown-first methodology — update the project docs (session-log, decisions, todo, current-task), scan for secrets, then commit and push in one flow. Use when the user asks to "wrap up and commit", "record and push", "문서 정리하고 커밋/푸시", "마무리하고 커밋", "마감해줘", "여기까지 정리", "마일스톤 끝", or otherwise finalize a milestone. Companion to bootstrap-docs-workflow; assumes docs/ + CLAUDE.md exist (falls back gracefully if some are absent).
+description: Close out a chunk of work under the Markdown-first methodology — update the project docs (session-log, decisions, todo, current-task), scan for secrets, then commit and push in one flow. Use when the user asks to "wrap up and commit", "record and push", "문서 정리하고 커밋/푸시", "마무리하고 커밋", "마감해줘", "여기까지 정리", "마일스톤 끝", or otherwise finalize a milestone. Also use when asked mid-work to record just a decision ("결정으로 남겨줘", "D-번호로 기록해줘"). Companion to bootstrap-docs-workflow; assumes docs/ + CLAUDE.md exist (falls back gracefully if some are absent).
 ---
 
 # Wrap up: update docs, commit, push
@@ -19,6 +19,10 @@ milestone without asking (that standing rule counts as the ask). Once they ask, 
 in one flow — under this methodology the standing rule is "push right after committing," so don't ask
 for a separate push confirmation. Still stop and ask first for anything the project's `CLAUDE.md` lists
 as ask-first (force push, history rewrite, breaking format change, external integration, possible secrets).
+
+**Asked to record only a decision** ("결정으로 남겨줘"): do only the Decisions step of §1 (file + index
+row), nothing else — no session-log entry, no gate, no commit unless the project's standing commit rule
+or the user says so. The rest waits for the real wrap-up.
 
 **Wrap-up is not a place for new work.** Don't fold a new feature or refactor into it; anything you
 noticed goes into `docs/todo.md` or the next-candidates line of `docs/current-task.md` as one line.
