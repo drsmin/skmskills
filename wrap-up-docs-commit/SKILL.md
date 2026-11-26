@@ -1,6 +1,6 @@
 ---
 name: wrap-up-docs-commit
-description: Close out a chunk of work under the Markdown-first methodology — update the project docs (session-log, decisions, todo, current-task), scan for secrets, then commit and push in one flow. Use when the user asks to "wrap up and commit", "record and push", "문서 정리하고 커밋/푸시", "마무리하고 커밋", "마감해줘", "여기까지 정리", "마일스톤 끝", or otherwise finalize a milestone. Also use when asked mid-work to record just a decision ("결정으로 남겨줘", "D-번호로 기록해줘"). Companion to bootstrap-docs-workflow; assumes docs/ + CLAUDE.md exist (falls back gracefully if some are absent).
+description: Close out a chunk of work under the Markdown-first methodology — update docs (session-log, decisions, todo, current-task), scan for secrets, commit and push. Use for "마무리하고 커밋", "문서 정리하고 푸시", "마감해줘", "여기까지 정리", "wrap up and commit", "마일스톤 끝"; or only a decision for "결정으로 남겨줘", "D-번호로 기록해줘". Companion to bootstrap-docs-workflow.
 ---
 
 # Wrap up: update docs, commit, push

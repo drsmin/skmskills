@@ -1,6 +1,6 @@
 ---
 name: bootstrap-docs-workflow
-description: Set up a Markdown-first, AI-session-restart working methodology in the current project — scaffold docs/ (current-task, session-log, decisions with D-numbers, todo, recovery, context-budget) plus a CLAUDE.md "rule hub" and a context-budget guard (bounded session-start reads + caps enforced by a pre-commit hook) so the record files can't inflate every future session — plus in-session cost controls (quiet gate runner, source-file size cap, session-cost measurement, lean personal settings). Use when starting a new project (or adopting the discipline in an existing one) and the user asks to "set up the docs workflow", "adopt this methodology", "bootstrap the working conventions", "이 방법론 적용해줘", "문서 기반 작업 규율 세팅", or asks to keep context/CLAUDE.md from growing unbounded. Run once per project; it detects the project name/remote and won't clobber files that already exist.
+description: Install the Markdown-first / session-restart discipline in a project that does not have it yet — docs/ (current-task, session-log, D-numbered decisions, todo, recovery, context-budget), a CLAUDE.md rule hub, and a context-budget guard (briefing script, pre-commit, Claude hooks). Use for "set up the docs workflow", "이 방법론 적용해줘", "문서 기반 작업 규율 세팅", or to stop CLAUDE.md/context growing unbounded. Once per project; never overwrites. Already installed → use context-budget-audit.
 ---
 
 # Bootstrap the Markdown-first / session-restart methodology
@@ -227,234 +227,41 @@ bash scripts/install-hooks.sh
 .git/pre-commit-test.log` 로 본다 — ⚠️ **커밋에 걸린 시간으로 판단하지 말 것**(훅은 도구 호출
 **전에** 돈다). ⚠️ **「훅이 JSON 을 냈다」를 「주입됐다」로 읽지 말 것** — 주입은 다음 세션에서 본다.
 
-- `session-brief.sh` — **the first line of defence, and the reason the protocol holds.** It cuts
-  each file to its session-start range and prints them as one briefing; `CLAUDE.md` points at this
-  command instead of listing files. Adjust the section list to the docs you actually created, and
-  keep `SESS_ENTRIES` and `DEC_ROWS` in sync with the numbers `CLAUDE.md` quotes. It reads
-  `todo.md`'s `★` marker to find the current phase — a judgement the script cannot make otherwise,
-  and one that sends the reader back into the whole file if it is left implicit. It also folds the
-  decisions index to its most recent `DEC_ROWS` rows: a full index was the one O(history) piece left
-  in the briefing. Keep the `━━ <file>` section headers — the guard cuts the briefing on them.
-  Its git section folds the working tree into a per-directory summary past `GIT_STATUS_LINES` —
-  **a line cap alone does not bound it**: 62 long Korean paths made the injected briefing 14.4k
-  chars (151% of the cap), and a guard that HARD-blocks in that state blocks the very rotation
-  commit that would fix it. Any briefing piece that prints paths needs a size bound, not a line one.
-- `check-docs-budget.sh` — two parts. **§A** caps file sizes/counts per `context-budget.md` §3.
-  **§B** inspects `CLAUDE.md` structurally, because that file is auto-loaded and no read protocol
-  can protect it. soft = warn (exit 0), hard = block (exit 1); every violation prints the specific
-  action. Caps live in variables at the top; tune to project scale but keep the hub tight.
-  Reference docs (any `docs/*.md` outside the core set) are auto-detected and reported **uncapped**.
-  It measures units, not just totals — per-log-entry and per-decision body length — because a single
-  long entry eats the briefing while every total stays green. And it measures the briefing's own
-  output size, which is the only number that *is* the session-start cost — plus each briefing
-  piece in characters, because line caps miss a line that doubles. Every character count goes
-  through `_chars()` (strip UTF-8 continuation bytes, count bytes): `wc -m` and `awk length()`
-  count **bytes** under an empty locale, which is what a pre-commit hook usually has, and that
-  blocked commits with phantom HARDs. Each row prints its headroom to the next threshold, and a
-  top-5 headroom summary closes the run.
-- `docs-budget.conf.example` → `scripts/docs-budget.conf` (optional) — **project-specific values
-  live here, never in the scripts**: caps, briefing windows, `BUDGET_MODE`, and the document format
-  (`ENTRY_HEAD`, `DEC_ID`, `DEC_HEAD`). Both scripts source it, so replacing the scripts with a newer
-  skill version keeps every customization. HUB caps raised here still have to match the
-  `CLAUDE.md` contract line, so this is not a back door.
-- `claude-md-sections.txt` — the allowed `##` sections of `CLAUDE.md`, one heading per line.
-  **Section sprawl is the main route to hub bloat**, so adding a section must touch the doc *and*
-  this file. Edit it to match whatever headings you actually installed. Entries start with `## `;
-  comments start with `# ` (one hash) — the two must not overlap, or the list parses empty.
-- `split-decisions.sh` — moves every `## D-NNN` body out of `docs/decisions.md` into
-  `docs/decisions/<ID>.md` (first line `# <ID>. 제목`), leaving the preamble + index. Builds the index
-  from the headings if there is none (newest on top). `--dry-run` shows the plan; it refuses on an
-  already-split repo, duplicate IDs, or an unrecognized format, and writes nothing unless every body
-  came out. A new repo doesn't need it — create `docs/decisions/` from the start.
-- `rotate-docs.sh` — does the rotation the guard asks for (policy §4): keeps the newest `SESS_KEEP`
-  (default 6) log entries and files the rest by heading date into `docs/archive/session-log-YYYY-MM.md`
-  (newest on top, one pointer line left behind); moves todo phases that are all `[x]` and carry no
-  `★` to `docs/archive/todo-done.md`. It never carries over unfinished items — that is a judgement —
-  it lists the mixed phases instead. `--dry-run` first; it writes nothing unless the content lines
-  before and after match exactly, and refuses an entry whose heading has no date.
-- `check.sh` — **the gate, quiet on success** (policy §7). Runs `GATE_STEPS` from the conf (`이름|명령`
-  per line — fill it with the project's real typecheck/lint/test commands plus the budget guard, and
-  point the project's `check` script at it). Success prints one line per step, failure prints that
-  step's full output and stops — never truncate it, a cause outside the tail costs a rerun. Then it
-  sizes tracked source files: `SRC_SOFT` (800) warns, `SRC_HARD` (1,500) fails. **Don't put `pnpm -s` /
-  `npm -s` in a step** — silent mode also drops child output, so the failure prints nothing. Verify
-  both paths: plant a type error, confirm the cause line shows, revert.
-- `session-cost.py` — read-only, `python3 -I scripts/session-cost.py`. Reads the session transcripts'
-  `usage` and prints per session the first call's input tokens (baseline), the peak (in-session
-  growth), and which tool results grew the conversation. The guard measures what the docs *would*
-  cost; this measures what sessions *did* cost.
-- `self-check.sh` — read-only, `bash scripts/self-check.sh`. Calls the other measures and collects
-  only their verdicts, in five sections: ① installed ② **enforced** ③ caps ④ cost ⑤ record-keeping
-  habit (does `docs/` land in the same commit). The exit code splits two things that look alike:
-  `1` = **enforcement is dead** (the guard file exists but no hook runs it, or the hook log is
-  empty — the "believed installed" state), `0` = enforcement is alive and what remains is for a
-  human to fix (soft caps, session cost, habit). Mixing them gives a diagnostic that is always red,
-  and then nobody reads it. **It is not a new guard** — it blocks nothing and owns no cap; the only
-  cap source is `check-docs-budget.sh`. **Don't add a threshold to it** (two cap sources that
-  disagree leave nobody knowing which is right) and **don't put it in `scripts/pre-commit.d/`**
-  (blocking turns it into a guard). The commands it runs must match the project's own exercises /
-  runbook, so they teach the same thing the tooling does. Verify both paths: delete
-  `.git/hooks/pre-commit`, confirm exit 1, reinstall, confirm exit 0.
-- `install-hooks.sh` — installs `.git/hooks/pre-commit`. It **refuses to clobber** a pre-existing
-  hook it didn't create (exit 2) and prints the two lines to add manually instead. If it exits 2,
-  relay that to the user rather than forcing it. **Project-specific pre-commit checks** (generated-
-  artifact drift, lint) go in `scripts/pre-commit.d/*.sh`, which the hook runs after the budget
-  check — never edit the hook or this installer to add one, because that is how the clobber marker
-  gets lost. A check that skips itself (missing venv, missing tool) must **say** it skipped; a
-  silently passing check reads as coverage.
+스크립트마다 한 줄 — **고치거나 출력이 낯설면 `reference/scripts.md` 를 먼저 읽는다** (각 스크립트가
+지키는 것, 함정, 확인법이 거기 있다):
 
-### §B checks, and why each exists
-
-| 검사 | 막는 실패 |
+| 스크립트 | 하는 일 |
 | --- | --- |
-| 문자 수 | 줄 수만 보면 **긴 표 행 하나가 예산을 삼키는 것**을 놓친다 |
-| 한 줄 길이 | 위와 같은 원인. 한 행에 요약을 밀어넣는 게 실제 비대화 경로였다 |
-| 섹션 본문 줄 수 | 섹션 하나가 문서를 삼키는 것 |
-| 허용 섹션 목록 | **섹션 스프롤** — 비대화의 1차 경로 |
-| 백틱 경로 존재 | 파일을 옮기고 문서를 안 고치면 **허브가 조용히 거짓말한다** |
-| `D-번호` 해결 | 없는 결정을 가리키는 참조 |
-| 계약 줄 ↔ 상수 | 상한을 **문서만 고쳐** 몰래 올리는 것 |
-| 스캔 sanity | 목록·정규식이 0건을 반환해 **검사가 통과처럼 보이며 무의미해지는 것** |
-
-The last one matters most: a guard that silently scans nothing passes forever and reads as coverage.
-Structure only — sentence wording, rule order, and whether a rule is *correct* are deliberately not
-checked. A guard that reddens on every copy edit gets weakened by the team.
+| `session-brief.sh` | **1차 방어선.** 각 문서를 세션 시작 범위로 잘라 한 브리핑으로 출력. `CLAUDE.md` 는 파일 목록 대신 이 명령을 가리킨다 |
+| `check-docs-budget.sh` | §A 파일 크기·개수 캡, §B `CLAUDE.md` 구조 검사, 단위(항목당·결정당)와 브리핑 출력 크기까지. soft=경고, hard=차단 |
+| `docs-budget.conf.example` | 프로젝트별 값(캡·창·`BUDGET_MODE`·문서 형식)은 **여기에만** — 스크립트를 갈아도 남는다 |
+| `claude-md-sections.txt` | `CLAUDE.md` 허용 `##` 섹션 목록 — 섹션 스프롤 방지 |
+| `split-decisions.sh` | 한 파일 결정 기록 → `docs/decisions/<ID>.md` (기존 저장소용, `--dry-run` 먼저) |
+| `rotate-docs.sh` | session-log·끝난 todo Phase 를 `docs/archive/` 로 회전 (내용이 같을 때만 쓴다) |
+| `check.sh` | 게이트: 성공 한 줄·실패 전문. 소스 파일 크기 `SRC_SOFT`/`SRC_HARD` |
+| `session-cost.py` · `session-rereads.py` | 읽기 전용. 세션 기록에서 실제 토큰 비용·재독분을 잰다 |
+| `self-check.sh` | 읽기 전용 자가 진단. exit 1 = 강제가 죽었다, 0 = 사람 몫만 남았다. 가드가 아니다 |
+| `tools-toggle.py` | 안 쓰는 스킬·MCP·플러그인을 개인 설정에서 끄고 켠다 (`reference/lean-sessions.md`) |
+| `install-hooks.sh` | `.git/hooks/pre-commit` 설치. 남의 훅은 덮지 않는다(exit 2 → 사용자에게 전달). 추가 검사는 `scripts/pre-commit.d/*.sh` |
 
 ### Then verify the guard actually fires
 
-Non-negotiable. Inject a violation per check and confirm each blocks:
+**Non-negotiable.** Run every injection in **`reference/verify.md`** (§B 검사표 · 허브 · 읽기 프로토콜 ·
+split · 환경) and confirm each blocks, then revert. Finally run `bash scripts/session-brief.sh` and read
+the output: a few thousand characters, ending at the index table, exactly one todo phase.
 
-```bash
-cp CLAUDE.md /tmp/hub.bak
-printf '\n## 몰래 추가한 섹션\n- x\n' >> CLAUDE.md        # 허용 목록 밖 섹션
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
-cp /tmp/hub.bak CLAUDE.md
+## 3b. Existing projects
 
-sed -i 's/전체 `4000자`/전체 `99999자`/' CLAUDE.md        # 문서만 상한 올리기
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
-cp /tmp/hub.bak CLAUDE.md
-bash scripts/check-docs-budget.sh                          # back to green
-```
-
-Also worth injecting: a 300-char line, a `docs/` path that doesn't exist, a `D-999` reference, and a
-`claude-md-sections.txt` whose entries are all commented out (that last one must fail as
-"파싱 0건", not pass silently).
-
-**And the reading-protocol checks specifically** — these are the ones that protect the first line
-of defence, so a silent pass here is the most expensive kind:
-
-```bash
-sed -i 's/^## ★ Phase 0/## Phase 0/' docs/todo.md          # ★ 마커 제거
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"  # 브리핑이 현재 Phase 를 못 찾는다
-git checkout docs/todo.md
-
-printf '\nx\n%.0s' {1..40} >> docs/session-log.md          # 항목 하나를 비대하게
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"  # 총 줄 수는 여전히 초록이다
-git checkout docs/session-log.md
-```
-
-The second one is the point of the whole unit-vs-total distinction: the file-level cap does **not**
-fire, and without the per-entry check the guard reports all-green while the briefing has doubled.
-
-**And the split-layout checks** (skip on a single-file log) — a split that drifts reads as green
-unless these fire:
-
-```bash
-sed -i '1s/D-001/D-009/' docs/decisions/D-001.md            # 파일 이름 ≠ 첫 헤딩
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
-git checkout docs/decisions/D-001.md
-printf '\n## D-099. 남은 본문\n\nx\n' >> docs/decisions.md   # split 인데 인덱스 파일에 본문
-bash scripts/check-docs-budget.sh; echo "expect 1, got $?"
-git checkout docs/decisions.md
-```
-
-**And the environment checks** — these catch a guard that judges the same commit differently in a
-hook than in your shell, or skips a section without saying so:
-
-```bash
-LC_ALL= LANG= bash scripts/check-docs-budget.sh | grep -E '문자 수|브리핑 출력'
-bash scripts/check-docs-budget.sh             | grep -E '문자 수|브리핑 출력'   # 두 값이 같아야 한다
-
-chmod -x scripts/session-brief.sh                          # 실행 비트만 빠진 설치
-bash scripts/check-docs-budget.sh | grep '브리핑 출력'      # 여전히 재야 한다 (건너뛰면 안 된다)
-chmod +x scripts/session-brief.sh
-```
-
-If `docs/decisions.md` has no index table, the script hard-fails by design (both layouts) — that table is what the
-session-start protocol reads, so its absence breaks the whole scheme.
-
-Finally, run `bash scripts/session-brief.sh` and read the output. It should be a few thousand
-characters, end at the index table (no decision bodies, at most `DEC_ROWS` index rows), and print
-exactly one todo phase.
-
-## 3b. Existing projects — adopt without breaking them
-
-Skip this on a new repo. On an existing one the scaffold is the easy part. Three things break:
-
-1. **The guard goes red on install, and that is correct.** A pre-existing `CLAUDE.md` is almost
-   never a hub (one test repo: 133 lines, 7,017 chars, 12 sections → 4 HARDs). Blocking every
-   commit from that moment gets the guard removed. So **start in adoption mode**: put
-   `BUDGET_MODE=warn` in `scripts/docs-budget.conf`. The verdicts stay identical; only blocking
-   waits.
-2. **Formats differ, and an unrecognized format reads as green.** English headings
-   (`## Entry points`) and ADR-style decisions (`### ADR-001`) used to scan as "0 found, ok". The
-   guard now flags both ("진입점 절을 못 찾았다", "결정 형식을 인식하지 못했다"). Answer them in the conf
-   (`ENTRY_HEAD`, `DEC_ID`, `DEC_HEAD`) rather than renaming the repo's documents. An ADR repo
-   still needs an index table (`| ADR-001 | … |`); that one is a real gap, not a format question.
-3. **Migrate `CLAUDE.md` into a hub.** Per section: if it is a rule *source*, move it to
-   `docs/<topic>.md` and leave one pointer row in the location index; if it is history or a
-   rationale, it becomes a decision. Register the surviving `##` headings in
-   `claude-md-sections.txt` and add the contract line. Existing content is the user's, so **show
-   the move plan before moving anything.**
-4. **Split a single-file decision log.** If `docs/decisions.md` holds the bodies, run
-   `bash scripts/split-decisions.sh --dry-run`, show the plan, then run it without the flag. Verify
-   nothing was lost (concatenate `docs/decisions/*.md` and diff against the old bodies, ignoring blank
-   and `---` lines), run the formatter, and change the `CLAUDE.md` decision rule line to point at
-   `docs/decisions/<ID>.md`. The guard then reports `docs/decisions/ … (split …)`.
-
-Then rotate what is over cap (§4 of the policy), and once the guard is all green **flip
-`BUDGET_MODE=block` and record it as a decision.** Without the flip, adoption mode becomes permanent
-and the guard becomes decoration.
-
-**Flipping is not enough on its own — check what the hard caps still enforce.** Where a repo's
-own rule says *past records are never rewritten* (decisions, shipped session entries), the past
-cannot be compressed, so the hard cap ends up pinned to the largest thing in history. One repo
-flipped to `block` with the decision cap at 260 lines while its longest past decision was 256:
-green, blocking, and a brand-new 250-line decision would have sailed through. The fix is not a
-tighter cap but **a split between what is enforced and what is merely shown**: set
-`DECBODY_FROM=<next number>` so the hard cap applies only from there on; the past stays visible as
-soft. Make the headroom table measure the enforced set too — if it reports the historical maximum,
-"98%" sits there forever and the only way to make that number fall is to raise the cap.
-Axes that rotate (session entries, todo) need none of this: rotation removes the past, so pinning
-hard to the post-rotation reality *is* enforcement for new entries.
-⚠️ Never bump `DECBODY_FROM` to excuse "just this one" — that one becomes the next baseline.
-⚠️ Verify both directions at the boundary: one line over must block, exactly at the cap must pass,
-and the historical maximum must stay soft. Then confirm `git commit` itself is refused — a guard's
-own exit code is only half the path.
-
-**Upgrading an older install of this skill** is `context-budget-audit`'s job, but the installer
-handles its half. A hook from an older version (header `# 자동 생성: scripts/install-hooks.sh`, no
-marker) is recognized as its own. If that hook carries extra project checks, the installer refuses
-and prints exactly the lines that would be lost; move them to `scripts/pre-commit.d/*.sh`, then
-run `bash scripts/install-hooks.sh --migrated`. The old hook is kept as `pre-commit.legacy.bak`.
+On a repo that has never had this methodology, the guard goes red on install and that is correct —
+**read `reference/existing-projects.md` before installing** (adoption mode `BUDGET_MODE=warn`, format
+mapping in the conf, migrating `CLAUDE.md` into a hub with a move plan shown first, splitting decisions,
+then flipping to `block`). If the repo **already has** an install of this skill, use
+`context-budget-audit` instead.
 
 ## 3c. Lean sessions — offer, don't impose
 
-The baseline before any work is mostly harness, not docs: claude.ai connectors (tool names + server
-instructions), plugins, skill listings. One machine went from 27k to 47k tokens per call at session
-start as connectors were added, against a few thousand for the project docs. These are **personal**
-choices (who uses Gmail from this repo is not a repo decision), so ask, then write
-`.claude/settings.local.json` — policy §7 has the JSON; plugin names come from `claude plugin list`.
-Make sure `.claude/settings.local.json` is ignored (add it to `.gitignore` if `git check-ignore` says
-no). If a settings file exists, merge keys — never overwrite. Say how to undo: delete the line and
-start a new session (connectors have no per-session toggle); plugins come back via `/plugin`.
-Rather than hand-editing JSON, edit the `GROUPS` in `scripts/tools-toggle.py` to the names this machine
-actually shows and run `python3 -I scripts/tools-toggle.py off <group|all>` (`on` to restore, then `/clear`).
-Only three knobs shrink the listing (measured): `skillOverrides: "user-invocable-only"` for skills,
-`permissions.deny: ["mcp__<server>"]` for MCP tools (server instructions stay; in remote-control sessions
-this is the only thing that works), `enabledPlugins: false` for marketplace plugins. Denying a built-in tool
-(Artifact, Workflow…) only blocks calls — its description stays — and claude.ai-synced plugins ignore
-`enabledPlugins`. Don't promise savings from those.
+Harness overhead (connectors, plugins, skill listings) usually dwarfs the docs. It is a **personal**
+choice, so ask first; the knobs and `tools-toggle.py` usage are in `reference/lean-sessions.md`.
 
 ## 4. Report and offer the follow-up
 
