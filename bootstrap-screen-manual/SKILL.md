@@ -1,6 +1,6 @@
 ---
 name: bootstrap-screen-manual
-description: Install a screen-based user manual (docs/manual/ wiki — one page per screen) plus an automated drift guard that fails the test suite when screens, menus, or permissions change without a doc update. Use when the user asks for "사용 설명서/메뉴얼 만들어줘", "화면 기준 매뉴얼", "user manual for the app", "문서가 안 낡게 해줘", "keep the docs in sync with the UI", or wants to port this manual discipline to another project. Works with or without a permission system; adapts to the project's router and test runner.
+description: Install a screen-based user manual (docs/manual/, one page per screen) plus a test that fails when screens, menus, or permissions change without a doc update. Use for "사용 설명서/매뉴얼 만들어줘", "화면 기준 매뉴얼", "문서가 안 낡게 해줘", "keep the docs in sync with the UI". Adapts to the router, test runner and permission system (reference implementation uses Next.js + vitest).
 ---
 
 # Screen-based manual + drift guard

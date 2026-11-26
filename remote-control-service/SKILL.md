@@ -1,6 +1,6 @@
 ---
 name: remote-control-service
-description: Run `claude remote-control` for a project as an always-on systemd user service (tmux-backed, survives logout and reboot) so the project can be driven from claude.ai/code or the Claude mobile app — add a project, remove/disable one that is finished, restart, list what is running, or attach to its screen. Use when the user asks "리모트 서비스로 띄워줘", "remote-control 서비스 추가/등록", "리모트 서비스 목록", "이 프로젝트 리모트 비활성화/내려줘", "claude-rc", or wants a project reachable from the Claude app without keeping a terminal open.
+description: Run `claude remote-control` for a ~/projects/<name> folder as an always-on systemd user service (tmux-backed, survives reboot) — add, remove/disable, restart, list, attach. Use for "리모트 서비스로 띄워줘", "remote-control 서비스 추가/목록/내려줘", "claude-rc", or to reach a project from the Claude app without a terminal.
 ---
 
 # Remote Control as a systemd user service

@@ -1,6 +1,6 @@
 ---
 name: new-webapp-project
-description: Start a new hybrid app project from a web-first native shell base (drs-webapp-base) — clone the base, set the new remote, fill the SSOT (project.config.ts), rename the scope, scaffold apps/web, run the gates, prebuild, and clean up inherited docs. Use when the user asks to "start a new project", "새 프로젝트 시작", "앱 프로젝트 만들어줘", "base 로 fork 해서 시작", "hybrid 앱 새로 시작", or names the base repo. Accepts an existing product blueprint/plan and prefills the interview from it (asks for it first), then seeds current-task/todo from it. Also resumes a half-finished fork (it reads fork:check to find what is left). Drives the base's own docs/start-new-project.md rather than restating it, so it never drifts from the base.
+description: Start a new hybrid app from the drs-webapp-base skeleton (or another base the user names) — clone, set the remote, fill project.config.ts, gates, prebuild, clean inherited docs — by following the base's own docs/start-new-project.md. Use for "새 프로젝트 시작", "앱 프로젝트 만들어줘", "base 로 fork 해서 시작", or to resume a half-finished fork. Reads a product blueprint first if one exists.
 ---
 
 # Start a new project from the webapp base

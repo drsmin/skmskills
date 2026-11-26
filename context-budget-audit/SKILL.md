@@ -1,6 +1,6 @@
 ---
 name: context-budget-audit
-description: Use when asked where a project's guides, rules, CLAUDE.md, or docs workflow waste tokens, or when an existing Markdown-first / session-restart install (docs/ with current-task, session-log, decisions, todo) has a session-start cost that grows with project history, or when sessions feel slow / grow long ("느려진다", "토큰 낭비 진단"). Measures the real reading cost and the in-session cost (from session transcripts), then retrofits the fix. For setting up the methodology on a NEW project use bootstrap-docs-workflow instead. Korean-first projects included.
+description: Measure and fix an EXISTING Markdown-first install (docs/ with current-task, session-log, decisions, todo) whose session-start or in-session cost grows with history, including upgrading an older install of bootstrap-docs-workflow. Use for "토큰 낭비 진단", "느려진다", "where do our rules/CLAUDE.md waste tokens". Not for first-time setup (bootstrap-docs-workflow).
 ---
 
 # 컨텍스트 예산 감사 — 이미 깔린 문서 규율을 잰다
@@ -169,7 +169,7 @@ wc -c docs/*.md docs/**/*.md | sort -n                                          
 
 - **시작** — 첫 호출의 입력. 프로젝트 문서(CLAUDE.md·메모리·브리핑)보다 훨씬 크면 나머지는 하네스다
   (커넥터 도구 이름·안내문, 플러그인, 스킬 목록). 실측: 커넥터가 붙으며 2.7만 → 4.7만, 문서는 수천.
-  → 개인 설정 `.claude/settings.local.json` (bootstrap §3c, 정책 §7). **사람에게 묻고** 쓴다.
+  → 개인 설정 `.claude/settings.local.json` (bootstrap `reference/lean-sessions.md`, 정책 §7). **사람에게 묻고** 쓴다.
   `bootstrap-docs-workflow/assets/tools-toggle.py` 를 `scripts/` 로 복사해 그룹을 맞추고 끈다. 실측
   (2026-10-27): MCP deny −1.6만 · 스킬 숨김 −1.2천, 남은 5.0만은 대부분 내장 도구 설명이다 — 내장 도구
   deny·동기화 플러그인 `enabledPlugins` 는 목록을 못 줄인다. 이 선까지 오면 시작은 그만 깎고 배율을 본다.

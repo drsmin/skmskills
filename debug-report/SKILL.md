@@ -29,7 +29,7 @@ description: Use when the user pastes an error, stack trace, failing test or com
 
 - 실패한 명령을 **한 번** 다시 돌려 같은 오류인지 본다(`2>&1 | tail -40`). 재현이 안 되면 그 사실이
   곧 단서다(캐시·순서·환경) — 바로 보고한다.
-- 서버를 바꾸는 명령(homelab 의 `ssh pve` 쓰기, 배포, DB 변경)은 **돌리지 않는다**. 읽기 전용 확인만,
+- 서버를 바꾸는 명령(원격 서버 쓰기, 배포, DB 변경)은 **돌리지 않는다**. 읽기 전용 확인만,
   나머지는 사용자에게 명령을 건넨다(저장소 `CLAUDE.md` 가 우선).
 
 ## 3. 좁히기 — 가설 세 개까지
